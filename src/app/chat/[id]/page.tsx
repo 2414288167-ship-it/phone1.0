@@ -1,8 +1,8 @@
 "use client";
 import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
-import MessageList, { Message } from "@/components/MessageList";
-import { InputArea } from "@/components/InputArea";
+import MessageList, { Message } from "@/components/messagelist";
+import { InputArea } from "@/components/inputarea";
 import {
   Menu,
   ChevronLeft,

@@ -7,7 +7,7 @@ import { UnreadProvider } from "@/context/UnreadContext";
 // 👇 2. 【关键！】必须引入 AIProvider，不然 AI 不会思考
 import { AIProvider } from "@/context/AIContext";
 
-import ClientLayout from "@/components/ClientLayout";
+import ClientLayout from "@/components/clientlayout";
 
 const inter = Inter({ subsets: ["latin"] });
 

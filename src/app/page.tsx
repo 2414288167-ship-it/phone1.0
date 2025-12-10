@@ -15,7 +15,7 @@ import {
   FileJson,
   PenLine,
 } from "lucide-react";
-import { SwipeableItem } from "@/components/SwipeableItem";
+import { SwipeableItem } from "@/components/swipeableItem";
 import { useRouter } from "next/navigation";
 import Image from "next/image";
 import { useUnread } from "@/context/UnreadContext";
