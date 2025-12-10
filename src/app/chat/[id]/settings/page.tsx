@@ -192,14 +192,11 @@ export default function ChatSettingsPage({ params }: PageProps) {
   const [worldBook, setWorldBook] = useState("default");
   const [aiPersona, setAiPersona] = useState("");
 
-  // 🔥 改动 1: 这里的 userPersonaId 变成了 ID，而不是一段文字
   const [userPersonaId, setUserPersonaId] = useState("default");
 
-  // 🔥 改动 2: 存储“我的所有可选人设”
   const [myPersonasOptions, setMyPersonasOptions] = useState<
     { value: string; label: string }[]
   >([]);
-  // 存储当前选中的人设的具体描述（用于展示预览）
   const [currentPersonaDesc, setCurrentPersonaDesc] = useState("");
 
   // 世界书分类列表状态
@@ -251,18 +248,16 @@ export default function ChatSettingsPage({ params }: PageProps) {
     "未分组",
   ];
 
-  // 🔥 改动 3: 加载“我的”所有人设数据
   useEffect(() => {
     const userProfileStr = localStorage.getItem("user_profile_v4");
     if (userProfileStr) {
       try {
         const profile: UserProfile = JSON.parse(userProfileStr);
         if (profile.personas && Array.isArray(profile.personas)) {
-          // 转换为 Select 组件需要的格式
           const options = profile.personas.map((p) => ({
             value: p.id,
             label: p.name,
-            desc: p.description, // 临时存一下描述方便后续查找
+            desc: p.description,
           }));
           setMyPersonasOptions(options);
         }
@@ -272,7 +267,6 @@ export default function ChatSettingsPage({ params }: PageProps) {
     }
   }, []);
 
-  // 监听选项变化，更新预览描述
   useEffect(() => {
     const userProfileStr = localStorage.getItem("user_profile_v4");
     if (userProfileStr) {
@@ -286,7 +280,6 @@ export default function ChatSettingsPage({ params }: PageProps) {
     }
   }, [userPersonaId]);
 
-  // 加载世界书数据
   useEffect(() => {
     const savedData = localStorage.getItem("worldbook_data");
     if (savedData) {
@@ -301,7 +294,6 @@ export default function ChatSettingsPage({ params }: PageProps) {
     }
   }, []);
 
-  // 初始化加载联系人设置
   useEffect(() => {
     (async () => {
       const resolvedParams = await params;
@@ -320,31 +312,25 @@ export default function ChatSettingsPage({ params }: PageProps) {
             setContactAvatar(contact.avatar || "🐱");
             setFriendGroup(contact.group || "未分组");
 
-            // 角色相关
             setAiPersona(contact.aiPersona || "");
-            // 🔥 读取保存的 userPersonaId，如果没有则默认 default
             setUserPersonaId(contact.userPersonaId || "default");
             if (contact.worldBook) setWorldBook(contact.worldBook);
 
-            // 后台活动
             if (contact.bgActivity !== undefined)
               setBgActivity(contact.bgActivity);
             if (contact.idleMin) setIdleMin(contact.idleMin);
             if (contact.idleMax) setIdleMax(contact.idleMax);
 
-            // 夜间模式
             if (contact.dndEnabled !== undefined)
               setDndEnabled(contact.dndEnabled);
             if (contact.dndStart) setDndStart(contact.dndStart);
             if (contact.dndEnd) setDndEnd(contact.dndEnd);
 
-            // 批量
             if (contact.batchEnabled !== undefined)
               setBatchEnabled(contact.batchEnabled);
 
             if (contact.schedules) setSchedules(contact.schedules);
 
-            // 其他设置
             if (contact.weatherSync !== undefined)
               setWeatherSync(contact.weatherSync);
             if (contact.location) setLocation(contact.location);
@@ -366,7 +352,6 @@ export default function ChatSettingsPage({ params }: PageProps) {
     })();
   }, [params]);
 
-  // 监听真实时间
   useEffect(() => {
     if (!id) return;
     const checkRealTime = () => {
@@ -425,7 +410,7 @@ export default function ChatSettingsPage({ params }: PageProps) {
               avatar: contactAvatar,
               group: friendGroup,
               aiPersona: aiPersona,
-              userPersonaId: userPersonaId, // 🔥 保存的是 ID，不是文字了
+              userPersonaId: userPersonaId,
               worldBook: worldBook,
               bgActivity,
               idleMin,
@@ -451,7 +436,12 @@ export default function ChatSettingsPage({ params }: PageProps) {
           return c;
         });
         localStorage.setItem("contacts", JSON.stringify(updatedContacts));
-        alert("设置已保存！");
+
+        // 🔥🔥🔥 核心修复：保存时强制清除旧的计时器，让新的设置（如1分钟）立即生效
+        localStorage.removeItem(`ai_target_time_${id}`);
+        console.log(`[设置] 已重置角色 ${id} 的后台计时器`);
+
+        alert("设置已保存！计时器已重置，请观察控制台日志。");
         router.back();
       }
     }
@@ -561,7 +551,7 @@ export default function ChatSettingsPage({ params }: PageProps) {
 
           <div className="border-t border-gray-100 my-2"></div>
 
-          {/* 🔥 3. 我的设定 (改为了选择器) */}
+          {/* 3. 我的设定 */}
           <InputItem
             label="我的设定 (User Persona)"
             type="select"
@@ -570,7 +560,6 @@ export default function ChatSettingsPage({ params }: PageProps) {
             options={myPersonasOptions}
           />
 
-          {/* 显示当前选中人设的预览描述 (只读) */}
           {currentPersonaDesc && (
             <div className="mt-2 px-3 py-2 bg-gray-50 rounded-lg border border-gray-100">
               <div className="text-xs text-gray-400 mb-1">设定预览:</div>

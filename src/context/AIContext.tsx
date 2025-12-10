@@ -49,6 +49,7 @@ const fetchWeatherText = async (location: string): Promise<string> => {
   return "";
 };
 
+// 夜间模式判断
 const isNightMode = (now: Date, startStr: string, endStr: string) => {
   if (!startStr || !endStr) return false;
   const currentMins = now.getHours() * 60 + now.getMinutes();
@@ -56,9 +57,12 @@ const isNightMode = (now: Date, startStr: string, endStr: string) => {
   const startMins = sh * 60 + sm;
   const [eh, em] = endStr.split(":").map(Number);
   const endMins = eh * 60 + em;
-  if (startMins > endMins)
-    return currentMins >= startMins || currentMins <= endMins;
-  else return currentMins >= startMins && currentMins <= endMins;
+
+  if (startMins > endMins) {
+    return currentMins >= startMins || currentMins < endMins;
+  } else {
+    return currentMins >= startMins && currentMins < endMins;
+  }
 };
 
 const getStickerPrompt = () => {
@@ -83,8 +87,8 @@ const getStickerPrompt = () => {
 
     return `
 【💥 强制表情包指令 💥】
-你拥有以下表情包库存。为了模仿真实人类，你必须高频率使用它们！
-规则：平均每 3 句话中，至少要有 1 句包含表情包图片。
+你拥有以下表情包库存。为了模仿真实人类，你必须中高频率使用它们！
+规则：平均每 5 句话中，至少要有 1 句包含表情包图片。
 
 ⚠️⚠️⚠️ 绝对重要规则：
 1. **只能**使用下方列表中明确提供的 URL。
@@ -110,20 +114,24 @@ const getWorldBookContent = (categoryId: string | number): string => {
     const wbDataStr = localStorage.getItem("worldbook_data");
     if (!wbDataStr) return "";
     const wbData = JSON.parse(wbDataStr);
-    if (!wbData.books) return "";
-    const relevantEntries = wbData.books.filter(
-      (book: any) => String(book.categoryId) === String(categoryId)
+    if (!wbData.categories) return "";
+
+    const category = wbData.categories.find(
+      (cat: any) => String(cat.id) === String(categoryId)
     );
-    if (relevantEntries.length === 0) return "";
-    const contentParts = relevantEntries
-      .map((book: any) => {
-        const activeContent = book.content.find(
-          (c: any) => c.enabled !== false
-        );
-        return activeContent ? activeContent.content : "";
-      })
-      .filter((text: string) => text.trim() !== "");
-    if (contentParts.length === 0) return "";
+
+    if (!category || !category.entries) return "";
+
+    const activeEntries = category.entries.filter(
+      (e: any) => e.enabled !== false
+    );
+    if (activeEntries.length === 0) return "";
+
+    const contentParts = activeEntries.map((e: any) => {
+      const keys = e.keys ? `[触发词: ${e.keys.join(", ")}]` : "";
+      return `${keys}\n${e.content}`;
+    });
+
     return `【重要世界观与角色设定 (最高优先级)】\n${contentParts.join(
       "\n\n"
     )}`;
@@ -141,6 +149,7 @@ export function AIProvider({ children }: { children: React.ReactNode }) {
 
   const [totalAiBubbles, setTotalAiBubbles] = useState(0);
 
+  // 这里的锁是关键，防止同一时间处理多个请求
   const processingChats = useRef<Set<string>>(new Set());
   const batchState = useRef<{
     [key: string]: { remaining: number; minInt: number; maxInt: number };
@@ -150,6 +159,7 @@ export function AIProvider({ children }: { children: React.ReactNode }) {
     if (typeof window !== "undefined") {
       const savedCount = localStorage.getItem("total_ai_bubbles");
       if (savedCount) setTotalAiBubbles(Number(savedCount));
+      processingChats.current.clear();
     }
   }, []);
 
@@ -178,12 +188,18 @@ export function AIProvider({ children }: { children: React.ReactNode }) {
     existingMessages: any[] = []
   ) => {
     const chatId = String(conversationId);
-    if (processingChats.current.has(chatId)) return;
+
+    // 双重检查：如果已经在处理，则拒绝新的请求
+    if (processingChats.current.has(chatId)) {
+      console.log(`[AI核心] ⚠️ ID: ${chatId} 正在处理中，跳过本次请求`);
+      return;
+    }
+
     processingChats.current.add(chatId);
     updateChatState(chatId, "thinking");
 
     try {
-      console.log(`[AI核心] 🚀 ID: ${chatId}, 类型: ${triggerType}`);
+      console.log(`[AI核心] 🚀 ID: ${chatId}, 触发类型: ${triggerType}`);
       const localKey = `chat_${chatId}`;
       let currentMessages = existingMessages;
       if (currentMessages.length === 0) {
@@ -204,7 +220,10 @@ export function AIProvider({ children }: { children: React.ReactNode }) {
       let userProxyUrl = localStorage.getItem("ai_proxy_url")?.trim();
       const model = localStorage.getItem("ai_model")?.trim() || "gpt-3.5-turbo";
 
-      if (!userApiKey) throw new Error("API Key Missing");
+      if (!userApiKey) {
+        console.error("API Key 未设置");
+        throw new Error("API Key Missing");
+      }
 
       const fetchUrl = "/api/chat";
       let weatherInfo = "";
@@ -216,18 +235,13 @@ export function AIProvider({ children }: { children: React.ReactNode }) {
       let worldBookContent = "";
       if (contactInfo.worldBook) {
         worldBookContent = getWorldBookContent(contactInfo.worldBook);
-        if (!worldBookContent) {
-          if (contactInfo.worldBook === "cyberpunk")
-            worldBookContent = "世界观：赛博朋克。";
-          else if (contactInfo.worldBook === "magic")
-            worldBookContent = "世界观：魔法世界。";
-        }
       }
       if (contactInfo.customWorldBook) {
         worldBookContent += `\n${contactInfo.customWorldBook}`;
       }
 
       const stickerPrompt = getStickerPrompt();
+
       const styleOptions = [
         "【模式A】：回复稍微短促一点。",
         "【模式B】：先发一个短句表达情绪。",
@@ -238,7 +252,12 @@ export function AIProvider({ children }: { children: React.ReactNode }) {
       let currentStyle =
         triggerType === "reply"
           ? styleOptions[Math.floor(Math.random() * styleOptions.length)]
-          : "【模式：主动发起话题】";
+          : "【模式：主动发起话题】你感觉有点无聊，或者突然想起一件事情，于是主动给对方发消息。不要太生硬，要自然。";
+
+      if (triggerType === "active_schedule") {
+        currentStyle =
+          "【模式：定时提醒/问候】根据当前时间，自然地发起问候或提醒。";
+      }
 
       if (triggerType === "continue") currentStyle = "【模式：继续说】";
 
@@ -262,7 +281,7 @@ export function AIProvider({ children }: { children: React.ReactNode }) {
          对象：${contactInfo.myNickname || "我"}。
          ${weatherInfo}
          ${worldBookContent} 
-         人设：${contactInfo.intro || "暂无"}。
+         人设：${contactInfo.aiPersona || contactInfo.intro || "暂无"}。
          
          ${stickerPrompt}
 
@@ -325,26 +344,6 @@ export function AIProvider({ children }: { children: React.ReactNode }) {
 
               if (content) {
                 fullContent += content;
-                const tempMsg = {
-                  id: tempAiMsgId,
-                  role: "assistant",
-                  content: fullContent,
-                  timestamp: new Date(),
-                };
-                const latestStored = localStorage.getItem(localKey);
-                const baseMsgs = latestStored
-                  ? JSON.parse(latestStored)
-                  : currentMessages;
-                const nextMsgs = baseMsgs.filter(
-                  (m: any) => m.id !== tempAiMsgId
-                );
-                nextMsgs.push(tempMsg);
-                localStorage.setItem(localKey, JSON.stringify(nextMsgs));
-                window.dispatchEvent(
-                  new CustomEvent("chat_updated", {
-                    detail: { conversationId: chatId },
-                  })
-                );
               }
             } catch (e) {
               // ignore
@@ -354,7 +353,6 @@ export function AIProvider({ children }: { children: React.ReactNode }) {
       }
 
       if (fullContent) {
-        // 1. 自动把“裸图片链接”包装成 Markdown 格式
         const rawUrlRegex =
           /(?<!\]\()(https?:\/\/[^\s]+\.(?:jpeg|jpg|gif|png|webp))/gi;
         let processedContent = fullContent.replace(
@@ -362,17 +360,11 @@ export function AIProvider({ children }: { children: React.ReactNode }) {
           "\n![image]($1)\n"
         );
 
-        // 2. 将图片前后强行加换行符
         const imgRegex = /(!?\[.*?\]\(.*?\))/g;
         processedContent = processedContent.replace(imgRegex, "\n$1\n");
-
-        // 3. 把 || 也换成换行符
         processedContent = processedContent.replace(/\|\|/g, "\n");
-
-        // 4. 清洗
         processedContent = processedContent.replace(/\|SPLIT/g, "");
 
-        // 5. 按换行符拆分
         const parts = processedContent
           .split(/\n+/)
           .map((s) => s.trim())
@@ -381,11 +373,6 @@ export function AIProvider({ children }: { children: React.ReactNode }) {
 
         const bubbleCount = parts.length;
         setTotalAiBubbles((prev) => prev + bubbleCount);
-        console.log(
-          `[AI统计] 本次回复包含 ${bubbleCount} 个气泡，总数: ${
-            totalAiBubbles + bubbleCount
-          }`
-        );
 
         const finalMsgs = parts.map((part, i) => ({
           id: (Date.now() + i + 10).toString(),
@@ -396,8 +383,7 @@ export function AIProvider({ children }: { children: React.ReactNode }) {
 
         const latestStored = localStorage.getItem(localKey);
         const baseMsgs = latestStored ? JSON.parse(latestStored) : [];
-        const cleanMsgs = baseMsgs.filter((m: any) => m.id !== tempAiMsgId);
-        const finalToSave = [...cleanMsgs, ...finalMsgs];
+        const finalToSave = [...baseMsgs, ...finalMsgs];
 
         localStorage.setItem(localKey, JSON.stringify(finalToSave));
         window.dispatchEvent(
@@ -406,9 +392,9 @@ export function AIProvider({ children }: { children: React.ReactNode }) {
           })
         );
 
-        // 🔥🔥🔥 核心修改：传入气泡数量 parts.length 🔥🔥🔥
         incrementUnread(chatId, parts[parts.length - 1], parts.length);
 
+        // ✅ 清理旧的 idle 目标
         localStorage.removeItem(`ai_target_time_${chatId}`);
 
         if (triggerType === "active_idle" && contactInfo.batchEnabled) {
@@ -421,17 +407,15 @@ export function AIProvider({ children }: { children: React.ReactNode }) {
               minInt: Number(contactInfo.batchIntervalMin) || 5,
               maxInt: Number(contactInfo.batchIntervalMax) || 15,
             };
+
+            const state = batchState.current[chatId];
+            const delay =
+              Math.floor(Math.random() * (state.maxInt - state.minInt + 1)) +
+              state.minInt;
+            setTimeout(() => {
+              performAIRequest(chatId, contactInfo, "active_batch");
+            }, delay * 1000);
           }
-        }
-        if (batchState.current[chatId]?.remaining > 0) {
-          const state = batchState.current[chatId];
-          const delay =
-            Math.floor(Math.random() * (state.maxInt - state.minInt + 1)) +
-            state.minInt;
-          batchState.current[chatId].remaining -= 1;
-          setTimeout(() => {
-            performAIRequest(chatId, contactInfo, "active_batch");
-          }, delay * 1000);
         }
       }
     } catch (e: any) {
@@ -487,6 +471,7 @@ export function AIProvider({ children }: { children: React.ReactNode }) {
     []
   );
 
+  // ✅✅✅ 修复后的心跳逻辑：增加“忙碌检测”，防止请求被误删 ✅✅✅
   useEffect(() => {
     const intervalId = setInterval(() => {
       const contactsStr = localStorage.getItem("contacts");
@@ -498,44 +483,76 @@ export function AIProvider({ children }: { children: React.ReactNode }) {
       ).padStart(2, "0")}`;
 
       contacts.forEach((contact: any) => {
-        if (!contact.bgActivity) return;
         const chatId = String(contact.id);
-        if (processingChats.current.has(chatId)) return;
 
-        const idleMin = Number(contact.idleMin) || 30;
-        const idleMax = Number(contact.idleMax) || 120;
-        if (idleMin && idleMax) {
-          if (
-            contact.dndEnabled &&
-            isNightMode(now, contact.dndStart, contact.dndEnd)
-          )
-            return;
-          let target = localStorage.getItem(`ai_target_time_${chatId}`);
-          if (!target) {
-            const next =
-              Date.now() +
-              (Math.floor(Math.random() * (idleMax - idleMin + 1)) + idleMin) *
-                60000;
-            localStorage.setItem(`ai_target_time_${chatId}`, String(next));
-          } else if (Number(target) <= Date.now()) {
-            localStorage.removeItem(`ai_target_time_${chatId}`);
-            performAIRequest(chatId, contact, "active_idle");
-          }
-        }
-        if (contact.schedules) {
+        // 1. 检查定时任务 (Schedules)
+        if (contact.schedules && Array.isArray(contact.schedules)) {
           contact.schedules.forEach((t: any) => {
             if (!t.enabled) return;
             const key = `ai_sched_${chatId}_${t.id}_${
               now.toISOString().split("T")[0]
             }`;
+
+            // 到了时间，且今天没运行过
             if (t.time === timeStr && !localStorage.getItem(key)) {
-              localStorage.setItem(key, "true");
+              // 🔴 修复：如果 AI 正在忙，跳过本次检测，等待下一次（5秒后）再试，不要标记为已完成
+              if (processingChats.current.has(chatId)) {
+                console.log(
+                  `[AI心跳] ⏳ 定时任务时间到，但 AI 忙碌中，稍后重试...`
+                );
+                return;
+              }
+
+              console.log(
+                `[AI心跳] ⏰ 触发定时任务: ${contact.name} at ${timeStr}`
+              );
+              localStorage.setItem(key, "true"); // 标记为已运行
               performAIRequest(chatId, contact, "active_schedule");
             }
           });
         }
+
+        // 2. 检查闲置触发 (Idle Trigger)
+        if (!contact.bgActivity) return;
+
+        const idleMin = Number(contact.idleMin) || 30;
+        const idleMax = Number(contact.idleMax) || 120;
+
+        if (
+          contact.dndEnabled &&
+          isNightMode(now, contact.dndStart, contact.dndEnd)
+        ) {
+          return;
+        }
+
+        let target = localStorage.getItem(`ai_target_time_${chatId}`);
+
+        if (!target) {
+          const randomMinutes =
+            Math.floor(Math.random() * (idleMax - idleMin + 1)) + idleMin;
+          const nextTime = Date.now() + randomMinutes * 60000;
+          localStorage.setItem(`ai_target_time_${chatId}`, String(nextTime));
+          console.log(
+            `[AI心跳] 🎲 为 ${contact.name} 设定下一次闲置触发: ${new Date(
+              nextTime
+            ).toLocaleTimeString()} (约${randomMinutes}分钟后)`
+          );
+        } else {
+          if (Number(target) <= Date.now()) {
+            // 🔴 修复：如果 AI 正在忙（比如刚才的定时任务正在跑），不要删除闲置触发，保留它等 AI 空闲了再触发
+            if (processingChats.current.has(chatId)) {
+              console.log(`[AI心跳] ⏳ 闲置时间到，但 AI 忙碌中，延迟触发...`);
+              return;
+            }
+
+            console.log(`[AI心跳] 🔔 ${contact.name} 闲置时间已到，准备触发!`);
+            localStorage.removeItem(`ai_target_time_${chatId}`);
+            performAIRequest(chatId, contact, "active_idle");
+          }
+        }
       });
     }, 5000);
+
     return () => clearInterval(intervalId);
   }, [incrementUnread]);
 

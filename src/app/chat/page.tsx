@@ -12,6 +12,8 @@ import {
   ChevronLeft,
   X,
   Upload,
+  FileJson,
+  PenLine,
 } from "lucide-react";
 import { SwipeableItem } from "@/components/swipeableItem";
 import { useRouter } from "next/navigation";
@@ -29,54 +31,46 @@ interface Contact {
   aiName?: string;
   myNickname?: string;
   isPinned?: boolean;
-  // 新增字段以支持完整功能
   description?: string;
   firstMessage?: string;
-  worldBookId?: string; // 关联的世界书ID
+  worldBookId?: string;
 }
 
-// 世界书数据结构接口
-interface WorldBookEntry {
-  id: number;
+// 对应 NotesPage 的数据结构
+interface BookContent {
   keys: string[];
+  comment: string;
   content: string;
   enabled: boolean;
 }
-
-interface WorldBookCategory {
-  id: number;
+interface Book {
+  id: string;
   name: string;
-  entries: WorldBookEntry[];
+  content: BookContent[];
+  categoryId: number;
+}
+interface Category {
+  name: string;
+  id: number;
+}
+interface WorldBookData {
+  books: Book[];
+  categories: Category[];
 }
 
-export const dynamic = "force-dynamic";
-
-// --- 工具函数：PNG 解析 (核心修复) ---
-
-/**
- * 从 PNG 文件 ArrayBuffer 中提取 tEXt 块数据 (TavernAI 格式)
- */
+// PNG 解析工具
 const extractPngMetadata = (buffer: ArrayBuffer): string | null => {
   const view = new DataView(buffer);
-
-  // 检查 PNG 签名
-  if (view.getUint32(0) !== 0x89504e47 || view.getUint32(4) !== 0x0d0a1a0a) {
+  if (view.getUint32(0) !== 0x89504e47 || view.getUint32(4) !== 0x0d0a1a0a)
     return null;
-  }
-
   let offset = 8;
-  const decoder = new TextDecoder("utf-8"); // 用于解码 PNG 块本身的结构
-
+  const decoder = new TextDecoder("utf-8");
   while (offset < buffer.byteLength) {
     const length = view.getUint32(offset);
     const type = decoder.decode(new Uint8Array(buffer, offset + 4, 4));
-
-    // 我们寻找 tEXt 块
     if (type === "tEXt") {
       const dataStart = offset + 8;
       const data = new Uint8Array(buffer, dataStart, length);
-
-      // tEXt 格式: keyword + null separator + text
       let separatorIndex = -1;
       for (let i = 0; i < length; i++) {
         if (data[i] === 0) {
@@ -84,15 +78,11 @@ const extractPngMetadata = (buffer: ArrayBuffer): string | null => {
           break;
         }
       }
-
       if (separatorIndex !== -1) {
         const keyword = decoder.decode(data.slice(0, separatorIndex));
         const text = decoder.decode(data.slice(separatorIndex + 1));
-
-        // TavernAI 使用 'chara' 关键字存储 Base64 编码的 JSON
         if (keyword === "chara") {
           try {
-            // 🔥🔥🔥 核心修复：Base64 解码 -> 二进制 -> UTF-8 字符串 🔥🔥🔥
             const binaryString = atob(text);
             const bytes = new Uint8Array(binaryString.length);
             for (let i = 0; i < binaryString.length; i++) {
@@ -100,195 +90,17 @@ const extractPngMetadata = (buffer: ArrayBuffer): string | null => {
             }
             return new TextDecoder("utf-8").decode(bytes);
           } catch (e) {
-            console.error("Base64 decode failed", e);
             return text;
           }
         }
       }
     }
-
-    // 移动到下一个块 (Length + Type + Data + CRC)
     offset += length + 12;
   }
-
   return null;
 };
 
-// --- 组件部分 ---
-
-// 创建角色弹窗组件
-function CreateCharacterModal({
-  isOpen,
-  onClose,
-  onCreateManual,
-  onImportCard,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  onCreateManual: () => void;
-  onImportCard: (file: File) => void;
-}) {
-  const fileInputRef = React.useRef<HTMLInputElement>(null);
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-      <div
-        className="bg-white rounded-lg shadow-lg max-w-md w-full p-6 animate-in zoom-in-95 duration-200"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold text-gray-900">创建新聊天</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700"
-          >
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-
-        <div className="space-y-3">
-          {/* 手动创建角色 */}
-          <button
-            onClick={onCreateManual}
-            className="w-full px-4 py-3 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
-          >
-            手动创建角色
-          </button>
-
-          {/* 导入角色卡 */}
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="w-full px-4 py-3 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-lg font-medium transition-colors flex items-center justify-center gap-2 border border-gray-200"
-          >
-            <Upload className="w-5 h-5 text-blue-500" />
-            <div className="flex flex-col items-start">
-              <span className="text-sm">导入角色卡</span>
-              <span className="text-[10px] text-gray-500">
-                支持 .json / .png (含世界书)
-              </span>
-            </div>
-          </button>
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept=".json,.png"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0];
-              if (file) {
-                onImportCard(file);
-              }
-              // 重置 value 允许重复选择同一文件
-              e.target.value = "";
-            }}
-          />
-        </div>
-
-        <button
-          onClick={onClose}
-          className="w-full mt-4 px-4 py-2 text-gray-500 hover:text-gray-800 transition-colors text-sm"
-        >
-          取消
-        </button>
-      </div>
-    </div>
-  );
-}
-
-// 手动创建角色对话框
-function ManualCreateModal({
-  isOpen,
-  onClose,
-  onConfirm,
-}: {
-  isOpen: boolean;
-  onClose: () => void;
-  onConfirm: (name: string, remark: string) => void;
-}) {
-  const [name, setName] = useState("");
-  const [remark, setRemark] = useState("");
-
-  const handleConfirm = () => {
-    if (name.trim()) {
-      onConfirm(name.trim(), remark.trim());
-      setName("");
-      setRemark("");
-    }
-  };
-
-  if (!isOpen) return null;
-
-  return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
-      <div className="bg-white rounded-lg shadow-lg max-w-md w-full p-6 animate-in zoom-in-95 duration-200">
-        <div className="flex justify-between items-center mb-6">
-          <h2 className="text-xl font-semibold text-gray-900">创建新角色</h2>
-          <button
-            onClick={onClose}
-            className="text-gray-500 hover:text-gray-700"
-          >
-            <X className="w-6 h-6" />
-          </button>
-        </div>
-
-        <div className="space-y-4 mb-6">
-          {/* 角色名 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              角色名 <span className="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              placeholder="请输入角色名"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              autoFocus
-              onKeyPress={(e) => {
-                if (e.key === "Enter") handleConfirm();
-              }}
-            />
-          </div>
-
-          {/* 备注名 */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">
-              备注名 (列表显示)
-            </label>
-            <input
-              type="text"
-              value={remark}
-              onChange={(e) => setRemark(e.target.value)}
-              placeholder="请输入备注名（可选）"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              onKeyPress={(e) => {
-                if (e.key === "Enter") handleConfirm();
-              }}
-            />
-          </div>
-        </div>
-
-        <div className="flex gap-2">
-          <button
-            onClick={onClose}
-            className="flex-1 px-4 py-2 bg-gray-100 hover:bg-gray-200 text-gray-900 rounded-lg font-medium transition-colors"
-          >
-            取消
-          </button>
-          <button
-            onClick={handleConfirm}
-            className="flex-1 px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg font-medium transition-colors"
-          >
-            确认创建
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
+export const dynamic = "force-dynamic";
 
 export default function ChatListPage() {
   const router = useRouter();
@@ -296,11 +108,12 @@ export default function ChatListPage() {
   const [isLoaded, setIsLoaded] = useState(false);
   const { unreadCounts, totalUnread } = useUnread();
 
-  // 弹窗状态
   const [showCreateModal, setShowCreateModal] = useState(false);
-  const [showManualCreateModal, setShowManualCreateModal] = useState(false);
+  const [createStep, setCreateStep] = useState<"menu" | "manual">("menu");
+  const [newName, setNewName] = useState("");
+  const [newRemark, setNewRemark] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // 默认数据
   const defaultContacts: Contact[] = [
     {
       id: "1",
@@ -319,7 +132,6 @@ export default function ChatListPage() {
         let parsedContacts = saved ? JSON.parse(saved) : defaultContacts;
         if (!saved)
           localStorage.setItem("contacts", JSON.stringify(defaultContacts));
-
         const contactsWithLatestMsg = parsedContacts.map((contact: Contact) => {
           const chatHistoryStr = localStorage.getItem(`chat_${contact.id}`);
           if (chatHistoryStr) {
@@ -349,131 +161,164 @@ export default function ChatListPage() {
     });
   };
 
-  const handleAddContact = () => {
+  const handlePlusClick = () => {
+    setCreateStep("menu");
+    setNewName("");
+    setNewRemark("");
     setShowCreateModal(true);
   };
 
-  const handleCreateManual = () => {
-    setShowCreateModal(false);
-    setShowManualCreateModal(true);
-  };
-
-  const handleConfirmCreate = (name: string, remark: string) => {
+  const handleManualCreate = () => {
+    if (!newName.trim()) {
+      alert("请输入角色名字");
+      return;
+    }
     const randomId = Date.now().toString();
     const newContact: Contact = {
       id: randomId,
-      name: name,
+      name: newName,
       avatar: "🤖",
-      remark: remark,
+      remark: newRemark || newName,
       intro: "你好",
-      aiName: name,
+      aiName: newName,
       myNickname: "我",
       isPinned: false,
     };
     const updated = [newContact, ...contacts];
     setContacts(sortContacts(updated));
     localStorage.setItem("contacts", JSON.stringify(updated));
-    setShowManualCreateModal(false);
-
-    setTimeout(() => router.push(`/chat/${randomId}`), 300);
+    setShowCreateModal(false);
+    router.push(`/chat/${newContact.id}`);
   };
 
-  // --- 核心：导入角色卡处理逻辑 ---
-  const handleImportCard = async (file: File) => {
+  // 🔥🔥🔥 核心修复：导入逻辑适配 NotesPage 的数据结构 🔥🔥🔥
+  const handleImportFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
     try {
       let characterData: any = null;
-      let cardAvatar: string = "🤖"; // 默认头像
+      let cardAvatar: string = "🐱";
 
-      if (file.type === "application/json") {
-        // 1. JSON 格式
-        const text = await file.text();
-        characterData = JSON.parse(text);
-      } else if (file.type === "image/png") {
-        // 2. PNG 格式 (TavernAI)
+      if (file.type === "image/png") {
         const arrayBuffer = await file.arrayBuffer();
-
-        // 尝试提取元数据
         const extractedJson = extractPngMetadata(arrayBuffer);
-
         if (extractedJson) {
           try {
             const parsed = JSON.parse(extractedJson);
-            // Tavern格式可能是 { data: {...} } 或者直接是对象
             characterData = parsed.data || parsed;
-          } catch (e) {
-            console.error("JSON parse error from PNG", e);
+          } catch (err) {
+            console.error(err);
           }
         }
-
-        // 如果提取成功，生成该图片的 Base64 作为头像
         if (characterData) {
-          // 重新读取 blob 转 base64 用于显示头像
-          const base64Avatar = await new Promise<string>((resolve) => {
+          cardAvatar = await new Promise<string>((resolve) => {
             const reader = new FileReader();
             reader.onloadend = () => resolve(reader.result as string);
             reader.readAsDataURL(file);
           });
-          cardAvatar = base64Avatar;
         } else {
-          alert("未能在图片中找到有效的角色数据 (Tavern/V2格式)");
+          alert("无法识别此 PNG 图片中的角色信息 (非 Tavern 格式?)");
           return;
         }
+      } else {
+        const text = await file.text();
+        characterData = JSON.parse(text);
       }
 
       if (characterData) {
-        // 规范化数据字段 (兼容不同版本的 JSON 格式)
         const charName =
           characterData.name || characterData.char_name || "导入角色";
         const charDesc =
-          characterData.description || characterData.personality || "";
+          characterData.description || characterData.persona || "";
         const charScenario = characterData.scenario || "";
         const charIntro =
           characterData.first_mes || characterData.greeting || "你好";
 
-        // --- 世界书提取逻辑 ---
+        // --- 核心：世界书处理 (转换结构) ---
         let importedWorldBookId = "";
         const wbData = characterData.character_book || characterData.lorebook;
 
         if (wbData && (wbData.entries || wbData.entries_list)) {
-          // 读取现有世界书
           const existingWBStr = localStorage.getItem("worldbook_data");
-          let existingWB = existingWBStr
+          let existingWB: WorldBookData = existingWBStr
             ? JSON.parse(existingWBStr)
-            : { categories: [] };
+            : { books: [], categories: [] };
 
-          // 创建新分组
+          if (!existingWB.books) existingWB.books = [];
+          if (!existingWB.categories) existingWB.categories = [];
+
+          // 创建新的分类
           const newCategoryId = Date.now();
           const entriesRaw = wbData.entries || wbData.entries_list || [];
 
-          const newEntries: WorldBookEntry[] = entriesRaw.map(
-            (entry: any, index: number) => ({
-              id: Date.now() + index,
-              keys: entry.keys || entry.key || [],
-              content: entry.content || "",
-              enabled: entry.enabled ?? true,
-            })
+          // 兼容 entries 可能是数组也可能是对象
+          const entriesArray = Array.isArray(entriesRaw)
+            ? entriesRaw
+            : Object.values(entriesRaw);
+
+          // 转换条目：从 Tavern 格式 -> NotesPage 格式
+          const newBooks: Book[] = entriesArray.map(
+            (entry: any, index: number) => {
+              // ... 原有的转换逻辑 ...
+              const keys = entry.keys || entry.key || [];
+              const finalKeys = Array.isArray(keys)
+                ? keys
+                : typeof keys === "string"
+                ? keys.split(",")
+                : [];
+              const enabled = entry.enabled !== false;
+
+              return {
+                id: `${newCategoryId}_${index}`,
+                categoryId: newCategoryId,
+                name: finalKeys[0] || `条目 ${index + 1}`,
+                content: [
+                  {
+                    keys: finalKeys,
+                    content: entry.content || "",
+                    comment: entry.comment || "",
+                    enabled: enabled,
+                  },
+                ],
+              };
+            }
           );
 
-          const newCategory: WorldBookCategory = {
-            id: newCategoryId,
-            name: `${charName}的世界书 (导入)`,
-            entries: newEntries,
-          };
+          // 🔥🔥🔥 新增：自动插入一个“前情概要”条目 🔥🔥🔥
+          newBooks.unshift({
+            id: `${newCategoryId}_summary_auto`, // 特殊ID，方便后续查找
+            categoryId: newCategoryId,
+            name: "前情概要 (自动记录)",
+            content: [
+              {
+                keys: ["前情概要", "summary", "story so far"], // 触发词
+                content: "（暂无记录，当对话达到一定数量时会自动生成）",
+                comment: "系统自动维护，请勿手动改ID",
+                enabled: true, // 默认启用
+              },
+            ],
+          });
+          // 🔥🔥🔥 新增结束 🔥🔥🔥
+          if (newBooks.length > 0) {
+            // 保存分类
+            existingWB.categories.push({
+              id: newCategoryId,
+              name: `${charName}的世界书 (导入)`,
+            });
+            // 保存书籍
+            existingWB.books.push(...newBooks);
 
-          // 保存世界书到 localStorage
-          existingWB.categories.push(newCategory);
-          localStorage.setItem("worldbook_data", JSON.stringify(existingWB));
-
-          importedWorldBookId = String(newCategoryId);
-          alert(
-            `✅ 已自动导入角色内置世界书，包含 ${newEntries.length} 个条目`
-          );
+            localStorage.setItem("worldbook_data", JSON.stringify(existingWB));
+            importedWorldBookId = String(newCategoryId);
+            alert(
+              `📖 成功导入世界书：《${charName}的世界书》，共 ${newBooks.length} 条设定。`
+            );
+          }
         }
-        // -----------------------
 
-        const randomId = Date.now().toString();
         const newContact: Contact = {
-          id: randomId,
+          id: Date.now().toString(),
           name: charName,
           avatar: cardAvatar,
           remark: charName,
@@ -481,7 +326,6 @@ export default function ChatListPage() {
           aiName: charName,
           myNickname: "我",
           isPinned: false,
-          // 保存完整设定
           description: `${charDesc}\n\n[Scenario]: ${charScenario}`,
           firstMessage: charIntro,
           worldBookId: importedWorldBookId,
@@ -491,27 +335,32 @@ export default function ChatListPage() {
         setContacts(sortContacts(updated));
         localStorage.setItem("contacts", JSON.stringify(updated));
 
-        // 初始化第一条消息
-        const initialMsg = [
-          {
-            id: Date.now().toString(),
-            role: "assistant",
-            content: charIntro,
-            timestamp: new Date(),
-            type: "text",
-          },
-        ];
-        localStorage.setItem(`chat_${randomId}`, JSON.stringify(initialMsg));
+        if (charIntro) {
+          const initialMsg = [
+            {
+              id: Date.now().toString(),
+              role: "assistant",
+              content: charIntro,
+              timestamp: new Date(),
+              type: "text",
+            },
+          ];
+          localStorage.setItem(
+            `chat_${newContact.id}`,
+            JSON.stringify(initialMsg)
+          );
+        }
 
         setShowCreateModal(false);
-
-        // 自动进入聊天
-        setTimeout(() => router.push(`/chat/${randomId}`), 300);
+        router.push(`/chat/${newContact.id}`);
+      } else {
+        alert("文件解析失败：未找到有效的角色数据。");
       }
-    } catch (error) {
-      console.error("导入角色卡失败:", error);
-      alert("导入失败，请检查文件格式。支持 TavernAI PNG 或 JSON。");
+    } catch (err) {
+      console.error("导入失败", err);
+      alert("导入失败：请确保文件是标准的 PNG 角色卡或 JSON 格式。");
     }
+    e.target.value = "";
   };
 
   const handlePin = (id: string) => {
@@ -531,27 +380,40 @@ export default function ChatListPage() {
     }
   };
 
-  const handleRead = (_id: string) => {};
+  const handleRead = (id: string) => {};
+
+  const goBackHome = () => {
+    console.log("正在跳转回首页...");
+    router.push("/");
+  };
 
   if (!isLoaded) return null;
 
   return (
-    <div className="flex flex-col h-screen bg-white text-gray-900 overflow-hidden">
-      <header className="px-4 h-14 flex items-center justify-between bg-[#ededed] border-b border-gray-200 shrink-0 z-20 relative">
+    <div className="flex flex-col h-screen bg-white text-gray-900 overflow-hidden relative">
+      <input
+        type="file"
+        ref={fileInputRef}
+        accept=".json,.png"
+        className="hidden"
+        onChange={handleImportFile}
+      />
+
+      <header className="px-4 h-14 flex items-center justify-between bg-[#ededed] border-b border-gray-200 shrink-0 z-50 relative">
         <button
-          onClick={() => router.push("/")}
-          className="p-1 -ml-2 text-gray-900 active:bg-gray-200 rounded-full z-30"
+          onClick={goBackHome}
+          className="p-1 -ml-2 text-gray-900 active:bg-gray-200 rounded-full z-30 cursor-pointer"
         >
           <ChevronLeft className="w-6 h-6" />
         </button>
-        <h1 className="text-lg font-medium text-gray-900 absolute left-1/2 transform -translate-x-1/2">
+        <h1 className="text-lg font-medium text-gray-900 absolute left-1/2 transform -translate-x-1/2 pointer-events-none">
           消息 ({contacts.length})
         </h1>
         <div className="flex gap-4 z-30">
           <button className="text-gray-900 p-1">
             <Search className="w-5 h-5" />
           </button>
-          <button onClick={handleAddContact} className="text-gray-900 p-1">
+          <button onClick={handlePlusClick} className="text-gray-900 p-1">
             <Plus className="w-5 h-5" />
           </button>
         </div>
@@ -650,19 +512,112 @@ export default function ChatListPage() {
         </Link>
       </div>
 
-      {/* 弹窗 */}
-      <CreateCharacterModal
-        isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onCreateManual={handleCreateManual}
-        onImportCard={handleImportCard}
-      />
-
-      <ManualCreateModal
-        isOpen={showManualCreateModal}
-        onClose={() => setShowManualCreateModal(false)}
-        onConfirm={handleConfirmCreate}
-      />
+      {showCreateModal && (
+        <div
+          className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-[2px] animate-in fade-in duration-200"
+          onClick={() => setShowCreateModal(false)}
+        >
+          <div
+            className="w-[320px] bg-white rounded-xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {createStep === "menu" ? (
+              <>
+                <div className="py-4 text-center border-b border-gray-100">
+                  <h3 className="text-[17px] font-semibold text-gray-900">
+                    创建新聊天
+                  </h3>
+                </div>
+                <div className="flex flex-col">
+                  <button
+                    onClick={() => setCreateStep("manual")}
+                    className="flex items-center gap-3 px-5 py-4 hover:bg-gray-50 active:bg-gray-100 transition-colors border-b border-gray-50 text-left"
+                  >
+                    <PenLine className="w-5 h-5 text-blue-500" />
+                    <span className="text-blue-500 font-medium text-[16px]">
+                      手动创建角色
+                    </span>
+                  </button>
+                  <button
+                    onClick={() => fileInputRef.current?.click()}
+                    className="flex items-center gap-3 px-5 py-4 hover:bg-gray-50 active:bg-gray-100 transition-colors text-left"
+                  >
+                    <FileJson className="w-5 h-5 text-blue-500" />
+                    <div>
+                      <span className="text-blue-500 font-medium text-[16px] block">
+                        从角色卡导入 (.json)
+                      </span>
+                      <span className="text-xs text-gray-400 mt-0.5">
+                        支持 JSON / PNG (自动导入世界书)
+                      </span>
+                    </div>
+                  </button>
+                </div>
+                <div className="h-2 bg-gray-100/50"></div>
+                <button
+                  onClick={() => setShowCreateModal(false)}
+                  className="w-full py-3.5 text-center text-gray-600 font-medium text-[16px] hover:bg-gray-50 active:bg-gray-100 transition-colors"
+                >
+                  取消
+                </button>
+              </>
+            ) : (
+              <div className="p-5">
+                <div className="flex justify-between items-center mb-5">
+                  <h3 className="font-bold text-gray-900 text-[17px]">
+                    填写角色信息
+                  </h3>
+                  <button
+                    onClick={() => setCreateStep("menu")}
+                    className="text-sm text-gray-500 hover:text-gray-800 px-2 py-1 rounded hover:bg-gray-100"
+                  >
+                    返回
+                  </button>
+                </div>
+                <div className="space-y-4">
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1.5 block font-medium">
+                      角色名字 <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      autoFocus
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-[15px] focus:outline-none focus:border-[#07c160] focus:bg-white transition-all caret-[#07c160]"
+                      placeholder="例如：沈墨"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs text-gray-500 mb-1.5 block font-medium">
+                      备注名 (列表显示)
+                    </label>
+                    <input
+                      value={newRemark}
+                      onChange={(e) => setNewRemark(e.target.value)}
+                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-[15px] focus:outline-none focus:border-[#07c160] focus:bg-white transition-all caret-[#07c160]"
+                      placeholder="例如：猫猫头"
+                    />
+                  </div>
+                </div>
+                <div className="flex gap-3 mt-8">
+                  <button
+                    onClick={() => setShowCreateModal(false)}
+                    className="flex-1 py-2.5 text-[15px] font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
+                  >
+                    取消
+                  </button>
+                  <button
+                    onClick={handleManualCreate}
+                    className="flex-1 py-2.5 text-[15px] font-medium text-white bg-[#07c160] rounded-lg hover:bg-[#06ad56] shadow-md shadow-green-500/20 active:scale-95 transition-all"
+                  >
+                    确认创建
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   );
 }

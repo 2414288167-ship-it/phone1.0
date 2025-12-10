@@ -1,519 +1,344 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
-import Link from "next/link";
-import {
-  Search,
-  Plus,
-  MessageSquare,
-  Users,
-  Compass,
-  User,
-  ChevronLeft,
-  X,
-  Upload,
-  FileJson,
-  PenLine,
-} from "lucide-react";
-import { SwipeableItem } from "@/components/swipeableItem";
-import { useRouter } from "next/navigation";
-import Image from "next/image";
 import { useUnread } from "@/context/UnreadContext";
+import Link from "next/link";
+import React, { useState, useEffect } from "react";
+import {
+  Settings,
+  CloudSun,
+  Calendar,
+  Image as ImageIcon,
+  Camera,
+  BatteryCharging,
+  Search,
+  MessageCircle,
+  Users,
+  ShoppingBag,
+  Music,
+} from "lucide-react";
+import { useMyTheme } from "../lib/MyTheme";
 
-interface Contact {
-  id: string;
-  name: string;
-  avatar: string;
-  remark?: string;
-  intro?: string;
-  aiName?: string;
-  myNickname?: string;
-  isPinned?: boolean;
-  description?: string;
-  worldBookId?: string;
-}
+// 默认头像
+const DEFAULT_AVATAR =
+  "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%23e2e8f0'%3E%3Crect width='24' height='24' fill='white'/%3E%3Cpath d='M12 12c2.21 0 4-1.79 4-4s-1.79-4-4-4-4 1.79-4 4 1.79 4 4 4zm0 2c-2.67 0-8 1.34-8 4v2h16v-2c0-2.66-5.33-4-8-4z' fill='%23cbd5e1'/%3E%3C/svg%3E";
 
-// 世界书相关接口定义
-interface WorldBookEntry {
-  id: number;
-  keys: string[];
-  content: string;
-  enabled: boolean;
-}
-interface WorldBookCategory {
-  id: number;
-  name: string;
-  entries: WorldBookEntry[];
-}
+const GlassCard = ({
+  children,
+  className = "",
+}: {
+  children: React.ReactNode;
+  className?: string;
+}) => (
+  <div
+    className={`bg-white/20 backdrop-blur-md border border-white/30 shadow-lg rounded-3xl ${className}`}
+  >
+    {children}
+  </div>
+);
 
-export const dynamic = "force-dynamic";
+const ClockWidget = () => {
+  const [time, setTime] = useState<Date | null>(null);
 
-export default function ChatListPage() {
-  const router = useRouter();
-  const [contacts, setContacts] = useState<Contact[]>([]);
-  const [isLoaded, setIsLoaded] = useState(false);
-  const { unreadCounts, totalUnread } = useUnread();
+  useEffect(() => {
+    setTime(new Date());
+    const timer = setInterval(() => setTime(new Date()), 1000);
+    return () => clearInterval(timer);
+  }, []);
 
-  // --- 🔥 新增：弹窗状态管理 ---
-  const [showCreateModal, setShowCreateModal] = useState(false);
-  const [createStep, setCreateStep] = useState<"menu" | "manual">("menu");
+  if (!time) return <div className="h-20"></div>;
 
-  // --- 🔥 新增：手动创建表单状态 ---
-  const [newName, setNewName] = useState("");
-  const [newRemark, setNewRemark] = useState("");
+  const formatTime = (date: Date) => {
+    const hours = String(date.getHours()).padStart(2, "0");
+    const minutes = String(date.getMinutes()).padStart(2, "0");
+    return `${hours}:${minutes}`;
+  };
 
-  // 文件上传引用
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const formatDate = (date: Date) => {
+    const month = String(date.getMonth() + 1).padStart(2, "0");
+    const day = String(date.getDate()).padStart(2, "0");
+    const weekMap = ["Sun.", "Mon.", "Tue.", "Wed.", "Thu.", "Fri.", "Sat."];
+    return `${month}月${day}日 ${weekMap[date.getDay()]}`;
+  };
 
-  // 默认数据
-  const defaultContacts: Contact[] = [
-    {
-      id: "1",
-      name: "哼呀鬼",
-      avatar: "🐱",
-      remark: "哼呀鬼",
-      intro: "在办公室...",
-      isPinned: false,
-    },
+  return (
+    <div className="flex flex-col items-end text-white drop-shadow-md">
+      <div className="text-6xl font-light tracking-wider leading-none mb-1 font-[sans-serif]">
+        {formatTime(time)}
+      </div>
+      <div className="flex items-center gap-2 text-sm opacity-90 mb-2">
+        <Music className="w-3 h-3" />
+        <span>Love with you !!! ♪</span>
+      </div>
+      <div className="flex items-center gap-2 bg-white/20 px-3 py-1 rounded-full backdrop-blur-sm">
+        <span className="text-sm font-medium">{formatDate(time)}</span>
+        <span className="text-sm">🍑</span>
+      </div>
+    </div>
+  );
+};
+
+const ToDoWidget = () => {
+  const items = [
+    { text: "保持好心情 🩵", done: false },
+    { text: "每天喝八杯水 🥛", done: false },
+    { text: "坚持减肥运动 🥎", done: false },
+    { text: "去看海吹泡泡 🫧", done: false },
   ];
+
+  return (
+    <GlassCard className="h-full p-4 flex flex-col relative overflow-hidden min-h-[220px]">
+      <div className="absolute -bottom-4 -left-4 text-6xl font-serif text-blue-800/10 rotate-[-15deg] pointer-events-none">
+        Blue
+        <br />
+        Sky
+      </div>
+      <h3 className="text-center text-gray-800 font-medium mb-3 border-b-2 border-dashed border-gray-400/30 pb-2 mx-4">
+        To Do List
+      </h3>
+      <div className="flex-1 flex flex-col gap-3 z-10">
+        {items.map((item, i) => (
+          <div
+            key={i}
+            className="flex items-center justify-between text-sm text-gray-700 font-medium"
+          >
+            <div className="flex items-center gap-2">
+              <span className="text-white drop-shadow-sm">♥</span>
+              <span>{item.text}</span>
+            </div>
+            <div className="w-4 h-4 border-2 border-gray-600/50 rounded" />
+          </div>
+        ))}
+      </div>
+      <div className="mt-2 relative h-12 w-full opacity-90">
+        <div className="absolute inset-0 bg-blue-200/40 rotate-2 transform rounded flex items-center justify-center text-blue-800 font-bold text-sm">
+          想去海边
+        </div>
+      </div>
+    </GlassCard>
+  );
+};
+
+const QuoteWidget = () => {
+  return (
+    <div className="bg-[#E0F2FE]/90 backdrop-blur-md rounded-3xl p-4 shadow-lg relative overflow-hidden h-32 flex flex-col items-center justify-center text-center">
+      <div className="absolute top-2 left-4 text-blue-400 font-bold text-xs">
+        Lucky day
+      </div>
+      <div className="absolute top-2 right-2 text-xl">☁️</div>
+      <div className="bg-white/80 p-2 rounded-xl shadow-sm rotate-1 mt-3 w-full">
+        <div className="text-[10px] text-blue-400 mb-0.5">小狗说：</div>
+        <div className="text-blue-500 font-bold text-base tracking-widest">
+          “ 烦恼都走开！”
+        </div>
+      </div>
+    </div>
+  );
+};
+
+const WeatherBatteryWidget = () => {
+  return (
+    <GlassCard className="p-3 flex flex-col justify-between h-32">
+      <div className="flex justify-between items-start">
+        <CloudSun className="w-8 h-8 text-gray-700" />
+        <div className="text-right text-gray-800">
+          <div className="text-lg font-bold">36°C / 25°C</div>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 bg-white/40 p-1 rounded-full px-3 w-fit">
+        <BatteryCharging className="w-4 h-4 text-gray-800" />
+        <span className="text-xs font-bold text-gray-700">能量 78%</span>
+      </div>
+      <div className="h-8 w-full rounded-lg bg-blue-100/50 overflow-hidden relative mt-1">
+        <img
+          src="https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=200&q=80"
+          className="w-full h-full object-cover opacity-80"
+          alt="drink"
+        />
+      </div>
+    </GlassCard>
+  );
+};
+
+const AppIcon = ({ icon: Icon, color, name, href = "#" }: any) => (
+  <Link href={href} className="flex flex-col items-center gap-1 group">
+    <div
+      className={`w-[3.5rem] h-[3.5rem] rounded-2xl flex items-center justify-center text-white shadow-md transition-transform group-active:scale-95 relative ${color}`}
+    >
+      <Icon className="w-7 h-7" />
+    </div>
+    {name && (
+      <span className="text-xs text-white font-medium drop-shadow-md">
+        {name}
+      </span>
+    )}
+  </Link>
+);
+
+export default function HomePage() {
+  const { totalUnread } = useUnread();
+  const { settings } = useMyTheme();
+  const [avatar, setAvatar] = useState<string>("");
 
   useEffect(() => {
     if (typeof window !== "undefined") {
       try {
-        const saved = localStorage.getItem("contacts");
-        let parsedContacts = saved ? JSON.parse(saved) : defaultContacts;
-        if (!saved)
-          localStorage.setItem("contacts", JSON.stringify(defaultContacts));
-
-        // 获取最新一条消息作为简介
-        const contactsWithLatestMsg = parsedContacts.map((contact: Contact) => {
-          const chatHistoryStr = localStorage.getItem(`chat_${contact.id}`);
-          if (chatHistoryStr) {
-            try {
-              const messages = JSON.parse(chatHistoryStr);
-              if (messages.length > 0) {
-                const lastMsg = messages[messages.length - 1];
-                return { ...contact, intro: lastMsg.content };
-              }
-            } catch (e) {}
-          }
-          return contact;
-        });
-        setContacts(sortContacts(contactsWithLatestMsg));
-      } catch (e) {
-        setContacts(defaultContacts);
-      }
-      setIsLoaded(true);
+        const profileStr = localStorage.getItem("user_profile_v4");
+        if (profileStr) {
+          const profile = JSON.parse(profileStr);
+          if (profile.avatar) setAvatar(profile.avatar);
+        }
+      } catch (e) {}
     }
   }, []);
 
-  const sortContacts = (list: Contact[]) => {
-    return [...list].sort((a, b) => {
-      if (a.isPinned && !b.isPinned) return -1;
-      if (!a.isPinned && b.isPinned) return 1;
-      return 0;
-    });
-  };
-
-  // --- 🔥 修改：点击加号，不再直接生成机器人，而是打开弹窗 ---
-  const handlePlusClick = () => {
-    setCreateStep("menu");
-    setNewName("");
-    setNewRemark("");
-    setShowCreateModal(true);
-  };
-
-  // --- 🔥 功能实现：手动创建 ---
-  const handleManualCreate = () => {
-    if (!newName.trim()) {
-      alert("请输入角色名字");
-      return;
-    }
-    const randomId = Date.now().toString();
-    const newContact: Contact = {
-      id: randomId,
-      name: newName,
-      avatar: "🤖",
-      remark: newRemark || newName,
-      intro: "你好",
-      aiName: newName,
-      myNickname: "我",
-      isPinned: false,
-    };
-
-    const updated = [newContact, ...contacts];
-    setContacts(sortContacts(updated));
-    localStorage.setItem("contacts", JSON.stringify(updated));
-
-    setShowCreateModal(false);
-    router.push(`/chat/${newContact.id}`);
-  };
-
-  // --- 🔥 功能实现：导入文件 (JSON) 并自动提取世界书 ---
-  const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      try {
-        const text = event.target?.result as string;
-        const data = JSON.parse(text);
-
-        // 1. 解析基本信息
-        const charName = data.name || data.char_name || "未知角色";
-        const description = data.description || data.persona || "";
-        const firstMes = data.first_mes || data.greeting || "你好";
-        const scenario = data.scenario || "";
-
-        // 2. 🔥 核心逻辑：自动提取并导入世界书 🔥
-        let importedWorldBookId = ""; // 如果导入成功，记录ID
-        const wbData = data.character_book || data.lorebook;
-
-        if (wbData) {
-          const rawEntries = wbData.entries || wbData.entries_list || [];
-          if (rawEntries.length > 0) {
-            // 读取本地现有的世界书数据
-            const existingWBStr = localStorage.getItem("worldbook_data");
-            let existingWB = existingWBStr
-              ? JSON.parse(existingWBStr)
-              : { categories: [] };
-
-            // 构造新分组
-            const newCategoryId = Date.now();
-            const newEntries: WorldBookEntry[] = rawEntries.map(
-              (entry: any, idx: number) => ({
-                id: newCategoryId + idx + 1,
-                keys: entry.keys || entry.key || [],
-                content: entry.content || "",
-                enabled: entry.enabled ?? true,
-              })
-            );
-
-            const newCategory: WorldBookCategory = {
-              id: newCategoryId,
-              name: `${charName}的世界书 (导入)`,
-              entries: newEntries,
-            };
-
-            // 保存
-            existingWB.categories.push(newCategory);
-            localStorage.setItem("worldbook_data", JSON.stringify(existingWB));
-
-            importedWorldBookId = String(newCategoryId);
-            alert(`📖 检测到内置世界书，已自动导入为：《${newCategory.name}》`);
-          }
-        }
-
-        // 3. 创建联系人
-        const newContact: Contact = {
-          id: Date.now().toString(),
-          name: charName,
-          avatar: "🐱", // JSON通常没有直接可用的图片URL，给个默认的
-          remark: charName,
-          intro: firstMes,
-          aiName: charName,
-          myNickname: "我",
-          isPinned: false,
-          description: `${description}\n\n[Scenario]: ${scenario}`,
-          worldBookId: importedWorldBookId, // 绑定刚才导入的世界书ID
-        };
-
-        // 4. 保存联系人
-        const updated = [newContact, ...contacts];
-        setContacts(sortContacts(updated));
-        localStorage.setItem("contacts", JSON.stringify(updated));
-
-        // 5. 保存第一条消息
-        if (firstMes) {
-          const initialMsg = [
-            {
-              id: Date.now().toString(),
-              role: "assistant",
-              content: firstMes,
-              timestamp: new Date(),
-              type: "text",
-            },
-          ];
-          localStorage.setItem(
-            `chat_${newContact.id}`,
-            JSON.stringify(initialMsg)
-          );
-        }
-
-        setShowCreateModal(false);
-        router.push(`/chat/${newContact.id}`);
-      } catch (err) {
-        console.error("导入失败", err);
-        alert("导入失败：请确保文件是标准的 TavernAI/V2 JSON 格式。");
-      }
-    };
-    reader.readAsText(file);
-  };
-
-  const handlePin = (id: string) => {
-    const updated = contacts.map((c) =>
-      c.id === id ? { ...c, isPinned: !c.isPinned } : c
-    );
-    setContacts(sortContacts(updated));
-    localStorage.setItem("contacts", JSON.stringify(updated));
-  };
-
-  const handleDelete = (id: string) => {
-    if (confirm("确认删除？")) {
-      const updated = contacts.filter((c) => c.id !== id);
-      setContacts(updated);
-      localStorage.setItem("contacts", JSON.stringify(updated));
-      localStorage.removeItem(`chat_${id}`);
-    }
-  };
-
-  const handleRead = (id: string) => {};
-
-  if (!isLoaded) return null;
-
   return (
-    <div className="flex flex-col h-screen bg-white text-gray-900 overflow-hidden relative">
-      {/* 隐藏的文件输入框 */}
-      <input
-        type="file"
-        ref={fileInputRef}
-        accept=".json"
-        className="hidden"
-        onChange={handleImportFile}
-      />
+    <div
+      className="min-h-screen bg-cover bg-center bg-fixed text-gray-800 overflow-hidden relative selection:bg-blue-200"
+      style={{
+        backgroundImage: settings.homeWallpaper
+          ? `url(${settings.homeWallpaper})`
+          : `url('https://images.unsplash.com/photo-1595123550441-d377e017de6a?q=80&w=1000&auto=format&fit=crop')`,
+        filter: settings.nightMode ? "brightness(0.7)" : "none",
+      }}
+    >
+      <div className="absolute inset-0 bg-blue-100/10 backdrop-blur-[2px]" />
 
-      <header className="px-4 h-14 flex items-center justify-between bg-[#ededed] border-b border-gray-200 shrink-0 z-20 relative">
-        <button
-          onClick={() => router.push("/")}
-          className="p-1 -ml-2 text-gray-900 active:bg-gray-200 rounded-full z-30"
-        >
-          <ChevronLeft className="w-6 h-6" />
-        </button>
-        <h1 className="text-lg font-medium text-gray-900 absolute left-1/2 transform -translate-x-1/2">
-          消息 ({contacts.length})
-        </h1>
-        <div className="flex gap-4 z-30">
-          <button className="text-gray-900 p-1">
-            <Search className="w-5 h-5" />
-          </button>
-          {/* 🔥 这里的点击事件已经改为打开弹窗 */}
-          <button onClick={handlePlusClick} className="text-gray-900 p-1">
-            <Plus className="w-5 h-5" />
-          </button>
+      {/* 🔥🔥🔥 修改1：底部 padding 加大到 28，防止内容被 Dock 遮挡 */}
+      <div className="relative z-10 h-full flex flex-col px-6 pt-10 pb-28 max-w-md mx-auto min-h-screen">
+        {/* 顶部区域 */}
+        <div className="flex justify-between items-start mb-6">
+          <Link
+            href="/settings"
+            className="absolute top-4 left-4 p-2 bg-white/20 rounded-full backdrop-blur-md text-white z-50"
+          >
+            <Settings className="w-5 h-5" />
+          </Link>
+
+          <Link href="/me" className="relative mt-8 group cursor-pointer">
+            <div className="w-24 h-24 rounded-full border-[3px] border-white/40 shadow-xl overflow-hidden relative z-10 bg-gray-100">
+              <img
+                src={avatar || DEFAULT_AVATAR}
+                className="w-full h-full object-cover group-active:scale-95 transition-transform"
+                alt="avatar"
+                onError={(e) => {
+                  e.currentTarget.src = DEFAULT_AVATAR;
+                }}
+              />
+            </div>
+            <div className="absolute -top-2 -left-2 w-28 h-28 rounded-full border border-white/20 z-0 animate-spin-slow" />
+          </Link>
+
+          <ClockWidget />
         </div>
-      </header>
 
-      <div className="flex-1 overflow-y-auto pb-16">
-        {contacts.map((contact) => {
-          const unreadCount = unreadCounts[String(contact.id)] || 0;
-          return (
-            <SwipeableItem
-              key={contact.id}
-              isPinned={contact.isPinned}
-              onPin={() => handlePin(contact.id)}
-              onDelete={() => handleDelete(contact.id)}
-              onRead={() => handleRead(contact.id)}
-            >
+        {/* 中间 Grid */}
+        <div className="grid grid-cols-2 gap-4 mb-4 flex-1">
+          <div className="flex flex-col gap-4">
+            <div className="flex-1">
+              <ToDoWidget />
+            </div>
+            <div className="grid grid-cols-2 gap-4 justify-items-center mt-2">
+              <AppIcon
+                icon={Calendar}
+                name="日历"
+                color="bg-white text-blue-500"
+              />
+              <AppIcon
+                icon={CloudSun}
+                name="天气"
+                color="bg-gradient-to-b from-blue-300 to-blue-400"
+              />
+              <AppIcon
+                icon={ImageIcon}
+                name="相册"
+                color="bg-gradient-to-tr from-purple-300 to-blue-300"
+              />
+              <AppIcon
+                icon={Camera}
+                name="相机"
+                color="bg-gray-200 text-gray-700"
+              />
+            </div>
+          </div>
+
+          <div className="flex flex-col gap-4">
+            <QuoteWidget />
+            <div className="flex justify-around px-1 py-2">
+              {/* 微信 */}
               <Link
-                href={`/chat/${contact.id}`}
-                className={`flex items-center gap-3 px-4 py-3 active:bg-gray-100 transition-colors ${
-                  contact.isPinned ? "bg-gray-50" : "bg-white"
-                }`}
+                href="/chat"
+                className="flex flex-col items-center gap-1 group relative"
               >
-                <div className="relative flex-shrink-0">
-                  <div className="w-12 h-12 rounded-lg bg-gray-100 flex items-center justify-center text-2xl overflow-hidden">
-                    {contact.avatar?.startsWith("http") ||
-                    contact.avatar?.startsWith("data:") ? (
-                      <Image
-                        src={contact.avatar}
-                        alt={contact.name}
-                        width={48}
-                        height={48}
-                        className="w-full h-full object-cover"
+                <div className="relative">
+                  <div className="w-14 h-14 rounded-2xl bg-white flex items-center justify-center shadow-md transition-transform group-active:scale-95 overflow-hidden">
+                    <svg
+                      viewBox="0 0 1024 1024"
+                      version="1.1"
+                      xmlns="http://www.w3.org/2000/svg"
+                      className="w-full h-full scale-125"
+                    >
+                      <path
+                        d="M503.552 406.95808c16.89088 0 27.648-10.84928 27.648-27.13088 0-17.05472-10.75712-27.13088-27.648-27.13088-16.128 0-31.488 10.07616-31.488 27.13088 0 16.28672 15.36 27.13088 31.488 27.13088zM351.48288 352.69632c-16.12288 0-33.024 10.07616-33.024 27.13088 0 16.2816 16.896 27.136 33.024 27.136 15.36 0 27.648-10.8544 27.648-27.136 0.00512-17.05472-12.28288-27.13088-27.648-27.13088zM574.20288 511.616c-10.752 0-21.504 10.07104-21.504 22.48192 0 10.07104 10.752 20.1472 21.504 20.1472 16.128 0 27.648-10.07616 27.648-20.1472 0.00512-12.40576-11.51488-22.48192-27.648-22.48192zM694.77888 511.616c-11.51488 0-21.504 10.07104-21.504 22.48192 0 10.07104 9.984 20.1472 21.504 20.1472 15.36 0 26.88512-10.07616 26.88512-20.1472 0-12.40576-11.52512-22.48192-26.88512-22.48192z"
+                        fill="#2AAE67"
                       />
-                    ) : (
-                      <span className="text-2xl">{contact.avatar}</span>
-                    )}
+                      <path
+                        d="M849.92 51.2H174.08c-67.8656 0-122.88 55.0144-122.88 122.88v675.84c0 67.8656 55.0144 122.88 122.88 122.88h675.84c67.8656 0 122.88-55.0144 122.88-122.88V174.08c0-67.8656-55.0144-122.88-122.88-122.88zM422.912 632.54016c-28.416 0-49.15712-4.64896-76.03712-12.40576l-77.568 39.54176 22.27712-66.66752C237.06112 554.25536 204.8 505.41056 204.8 445.7216c0-105.42592 98.304-186.04032 218.112-186.04032 105.984 0 200.45312 63.5648 218.88 153.49248-7.68-1.55648-14.592-2.3296-20.736-2.3296-104.44288 0-185.08288 79.06816-185.08288 174.4128 0 16.27648 2.304 31.00672 6.144 46.5152-6.144 0.768-13.06112 0.768-19.20512 0.768z m320.25088 75.96544l15.36 55.81312-58.368-33.3312c-22.26688 4.64896-43.776 11.62752-66.04288 11.62752-102.912 0-184.32-71.31648-184.32-159.68256s81.408-159.68768 184.32-159.68768c97.536 0 185.088 71.31648 185.088 159.68768 0 49.60768-33.024 93.78816-76.03712 125.57312z"
+                        fill="#2AAE67"
+                      />
+                    </svg>
                   </div>
-                  {unreadCount > 0 && (
-                    <div className="absolute -top-1.5 -right-1.5 z-50 min-w-[1.125rem] h-[1.125rem] bg-red-500 text-white text-[10px] font-bold px-1 rounded-full flex items-center justify-center border-2 border-white shadow-sm">
-                      {unreadCount > 99 ? "99+" : unreadCount}
+                  {totalUnread > 0 && (
+                    <div className="absolute -top-1.5 -right-1.5 min-w-[1.25rem] h-5 bg-red-500 text-white text-xs font-bold px-1.5 rounded-full flex items-center justify-center border-2 border-[#f5f5f5] shadow-sm z-20">
+                      {totalUnread > 99 ? "99+" : totalUnread}
                     </div>
                   )}
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="flex justify-between items-center mb-0.5">
-                    <h3 className="font-medium text-base text-gray-900 truncate">
-                      {contact.remark || contact.name}
-                    </h3>
-                    <span className="text-xs text-gray-300">刚刚</span>
-                  </div>
-                  <p
-                    className={`text-sm truncate ${
-                      unreadCount > 0 ? "text-gray-800" : "text-gray-400"
-                    }`}
-                  >
-                    {unreadCount > 0 ? `[${unreadCount}条] ` : ""}
-                    {contact.intro || "点击开始聊天..."}
-                  </p>
-                </div>
+                <span className="text-xs text-white font-medium drop-shadow-md">
+                  微信
+                </span>
               </Link>
-            </SwipeableItem>
-          );
-        })}
-      </div>
 
-      <div className="h-16 bg-[#f7f7f7] border-t border-gray-200 flex items-center justify-around text-[11px] shrink-0 fixed bottom-0 w-full z-30 pb-1 safe-area-bottom">
-        <div className="flex flex-col items-center justify-center h-full w-1/4 cursor-default text-[#07c160]">
-          <div className="relative">
-            <MessageSquare className="w-7 h-7 mb-0.5 fill-current" />
-            {totalUnread > 0 && (
-              <span className="absolute -top-1 -right-1 min-w-[0.5rem] h-2 w-2 bg-red-500 rounded-full border border-white"></span>
-            )}
+              {/* 世界书 */}
+              <Link
+                href="/notes"
+                className="flex flex-col items-center gap-1 group"
+              >
+                <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shadow-md transition-transform group-active:scale-95 border border-white/20">
+                  <img
+                    src="https://i.postimg.cc/ZKMzdKzx/像素风_书籍_copy.png"
+                    alt="世界书"
+                    className="w-10 h-10 object-contain"
+                  />
+                </div>
+                <span className="text-xs text-white font-medium drop-shadow-md">
+                  世界书
+                </span>
+              </Link>
+            </div>
+            <WeatherBatteryWidget />
           </div>
-          <span>微信</span>
         </div>
-        <Link
-          href="/contacts"
-          className="flex flex-col items-center justify-center h-full w-1/4 text-gray-900 hover:text-[#07c160] transition-colors"
-        >
-          <Users className="w-7 h-7 mb-0.5" />
-          <span>通讯录</span>
-        </Link>
-        <Link
-          href="/discover"
-          className="flex flex-col items-center justify-center h-full w-1/4 text-gray-900 hover:text-[#07c160] transition-colors"
-        >
-          <Compass className="w-7 h-7 mb-0.5" />
-          <span>发现</span>
-        </Link>
-        <Link
-          href="/me"
-          className="flex flex-col items-center justify-center h-full w-1/4 text-gray-900 hover:text-[#07c160] transition-colors"
-        >
-          <User className="w-7 h-7 mb-0.5" />
-          <span>我</span>
-        </Link>
-      </div>
 
-      {/* 🔥🔥🔥 全新的创建/导入弹窗 🔥🔥🔥 */}
-      {showCreateModal && (
-        <div
-          className="fixed inset-0 z-[999] flex items-center justify-center bg-black/40 backdrop-blur-[2px] animate-in fade-in duration-200"
-          onClick={() => setShowCreateModal(false)}
-        >
-          <div
-            className="w-[320px] bg-white rounded-xl shadow-2xl overflow-hidden animate-in zoom-in-95 duration-200"
-            onClick={(e) => e.stopPropagation()}
-          >
-            {createStep === "menu" ? (
-              // 1. 菜单模式
-              <>
-                <div className="py-4 text-center border-b border-gray-100">
-                  <h3 className="text-[17px] font-semibold text-gray-900">
-                    创建新聊天
-                  </h3>
-                </div>
-
-                <div className="flex flex-col">
-                  {/* 手动创建按钮 */}
-                  <button
-                    onClick={() => setCreateStep("manual")}
-                    className="flex items-center gap-3 px-5 py-4 hover:bg-gray-50 active:bg-gray-100 transition-colors border-b border-gray-50 text-left"
-                  >
-                    <PenLine className="w-5 h-5 text-blue-500" />
-                    <span className="text-blue-500 font-medium text-[16px]">
-                      手动创建角色
-                    </span>
-                  </button>
-
-                  {/* 导入按钮 */}
-                  <button
-                    onClick={() => fileInputRef.current?.click()}
-                    className="flex items-center gap-3 px-5 py-4 hover:bg-gray-50 active:bg-gray-100 transition-colors text-left"
-                  >
-                    <FileJson className="w-5 h-5 text-blue-500" />
-                    <div>
-                      <span className="text-blue-500 font-medium text-[16px] block">
-                        从角色卡导入 (.json)
-                      </span>
-                      <span className="text-xs text-gray-400 mt-0.5">
-                        支持自动导入内置世界书
-                      </span>
-                    </div>
-                  </button>
-                </div>
-
-                <div className="h-2 bg-gray-100/50"></div>
-
-                <button
-                  onClick={() => setShowCreateModal(false)}
-                  className="w-full py-3.5 text-center text-gray-600 font-medium text-[16px] hover:bg-gray-50 active:bg-gray-100 transition-colors"
-                >
-                  取消
-                </button>
-              </>
-            ) : (
-              // 2. 手动填写模式
-              <div className="p-5">
-                <div className="flex justify-between items-center mb-5">
-                  <h3 className="font-bold text-gray-900 text-[17px]">
-                    填写角色信息
-                  </h3>
-                  <button
-                    onClick={() => setCreateStep("menu")}
-                    className="text-sm text-gray-500 hover:text-gray-800 px-2 py-1 rounded hover:bg-gray-100"
-                  >
-                    返回
-                  </button>
-                </div>
-
-                <div className="space-y-4">
-                  <div>
-                    <label className="text-xs text-gray-500 mb-1.5 block font-medium">
-                      角色名字 <span className="text-red-500">*</span>
-                    </label>
-                    <input
-                      autoFocus
-                      value={newName}
-                      onChange={(e) => setNewName(e.target.value)}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-[15px] focus:outline-none focus:border-[#07c160] focus:bg-white transition-all caret-[#07c160]"
-                      placeholder="例如：沈墨"
-                    />
-                  </div>
-                  <div>
-                    <label className="text-xs text-gray-500 mb-1.5 block font-medium">
-                      备注名 (列表显示)
-                    </label>
-                    <input
-                      value={newRemark}
-                      onChange={(e) => setNewRemark(e.target.value)}
-                      className="w-full bg-gray-50 border border-gray-200 rounded-lg px-3 py-2.5 text-[15px] focus:outline-none focus:border-[#07c160] focus:bg-white transition-all caret-[#07c160]"
-                      placeholder="例如：猫猫头"
-                    />
-                  </div>
-                </div>
-
-                <div className="flex gap-3 mt-8">
-                  <button
-                    onClick={() => setShowCreateModal(false)}
-                    className="flex-1 py-2.5 text-[15px] font-medium text-gray-600 bg-gray-100 rounded-lg hover:bg-gray-200 transition-colors"
-                  >
-                    取消
-                  </button>
-                  <button
-                    onClick={handleManualCreate}
-                    className="flex-1 py-2.5 text-[15px] font-medium text-white bg-[#07c160] rounded-lg hover:bg-[#06ad56] shadow-md shadow-green-500/20 active:scale-95 transition-all"
-                  >
-                    确认创建
-                  </button>
-                </div>
+        {/* 🔥🔥🔥 修改2：使用 absolute positioning 强制固定在底部 🔥🔥🔥 */}
+        {/* bottom-6 大约是 24px (接近0.5cm) */}
+        <div className="absolute bottom-6 left-6 right-6 z-50">
+          <GlassCard className="flex justify-around items-center py-3 px-2 rounded-[2rem] bg-white/30 border-white/40 shadow-xl">
+            <AppIcon icon={Search} color="bg-blue-400" href="/discover" />
+            <Link href="/chat" className="relative group">
+              <div className="w-[3.5rem] h-[3.5rem] rounded-2xl bg-blue-500 flex items-center justify-center text-white shadow-md transition-transform group-active:scale-95">
+                <MessageCircle className="w-7 h-7" />
               </div>
-            )}
-          </div>
+              {totalUnread > 0 && (
+                <div className="absolute -top-1.5 -right-1.5 min-w-[1.2rem] h-[1.2rem] bg-red-500 text-white text-[10px] font-bold px-1 rounded-full flex items-center justify-center border-2 border-white shadow-sm z-20">
+                  {totalUnread > 99 ? "99+" : totalUnread}
+                </div>
+              )}
+            </Link>
+            <AppIcon icon={Users} color="bg-blue-300" href="/contacts" />
+            <AppIcon icon={ShoppingBag} color="bg-orange-300" href="/me" />
+          </GlassCard>
         </div>
-      )}
+      </div>
     </div>
   );
 }

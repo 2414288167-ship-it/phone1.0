@@ -11,6 +11,7 @@ import {
   ChevronDown,
   ChevronUp,
   FileText,
+  Sparkles,
 } from "lucide-react";
 
 interface PageProps {
@@ -111,7 +112,7 @@ export default function MemoryPage({ params }: PageProps) {
     aiMsgCount: 0,
   });
 
-  // 1. 记忆类别 (现在是分组结构)
+  // 1. 记忆类别
   const [userPreferences, setUserPreferences] = useState("");
   const [memoryGroups, setMemoryGroups] = useState<MemoryGroup[]>([]);
   const [expandedGroupIds, setExpandedGroupIds] = useState<Set<string>>(
@@ -122,7 +123,6 @@ export default function MemoryPage({ params }: PageProps) {
   const [autoSummary, setAutoSummary] = useState(false);
   const [summaryThreshold, setSummaryThreshold] = useState(50);
   const [customSummaryPrompt, setCustomSummaryPrompt] = useState("");
-  const [chatSummaries, setChatSummaries] = useState<string[]>([]);
 
   // 3. 生理周期
   const [menstrualData, setMenstrualData] = useState({
@@ -167,11 +167,9 @@ export default function MemoryPage({ params }: PageProps) {
           setContact(current);
           setUserPreferences(current.userPreferences || "");
 
-          // --- 核心：记忆数据迁移逻辑 ---
           let rawMemories = current.permanentMemory || [];
           let processedGroups: MemoryGroup[] = [];
 
-          // 检查是否是旧的扁平数组
           if (
             Array.isArray(rawMemories) &&
             rawMemories.length > 0 &&
@@ -184,13 +182,11 @@ export default function MemoryPage({ params }: PageProps) {
                 items: rawMemories,
               },
             ];
-            // 立即保存迁移后的结构
             saveData({ permanentMemory: processedGroups }, current.id);
           } else {
             processedGroups = rawMemories;
           }
 
-          // 如果完全为空，初始化一个默认分组
           if (processedGroups.length === 0) {
             processedGroups = [
               { id: "default_group", title: "未分类收藏", items: [] },
@@ -198,7 +194,6 @@ export default function MemoryPage({ params }: PageProps) {
           }
 
           setMemoryGroups(processedGroups);
-          // 默认展开第一个
           if (processedGroups.length > 0) {
             setExpandedGroupIds(new Set([processedGroups[0].id]));
           }
@@ -206,7 +201,6 @@ export default function MemoryPage({ params }: PageProps) {
           setAutoSummary(current.autoSummary || false);
           setSummaryThreshold(current.summaryThreshold || 50);
           setCustomSummaryPrompt(current.customSummaryPrompt || "");
-          setChatSummaries(current.chatSummaries || []);
 
           if (current.menstrualData) {
             setMenstrualData(current.menstrualData);
@@ -334,6 +328,55 @@ export default function MemoryPage({ params }: PageProps) {
     }
   };
 
+  // 🔥🔥🔥 核心修改：手动触发/模拟自动总结 🔥🔥🔥
+  const handleManualSummarize = () => {
+    if (!contact?.worldBook) {
+      alert("该角色未关联世界书，无法生成总结。");
+      return;
+    }
+    const worldBookId = contact.worldBook;
+    const summaryBookId = `${worldBookId}_summary_auto`; // 👈 必须与导入时一致
+
+    // 1. 获取世界书数据
+    const wbStr = localStorage.getItem("worldbook_data");
+    if (!wbStr) return;
+    const wbData = JSON.parse(wbStr);
+
+    // 2. 查找目标条目
+    const bookIndex = wbData.books.findIndex(
+      (b: any) => b.id === summaryBookId
+    );
+
+    if (bookIndex === -1) {
+      alert("未找到‘前情概要’条目，可能是旧数据或已被删除。");
+      return;
+    }
+
+    // 3. 模拟生成总结 (实际应调用 LLM)
+    const newSummary = `[${new Date().toLocaleDateString()} 自动总结]\n根据最近的聊天记录，${
+      contact.name
+    } 与用户的关系更进了一步... (此为模拟生成的总结内容)`;
+
+    // 4. 更新内容
+    const oldContent = wbData.books[bookIndex].content[0].content;
+    wbData.books[bookIndex].content[0].content =
+      oldContent + "\n\n" + newSummary;
+
+    localStorage.setItem("worldbook_data", JSON.stringify(wbData));
+    alert("已根据当前设定，生成了一段新总结并写入世界书！");
+  };
+
+  // 🔥🔥🔥 核心修改：跳转到世界书前情概要 🔥🔥🔥
+  const handleViewHistory = () => {
+    if (contact && contact.worldBook) {
+      // 构造目标 URL：携带分类 ID 和 书籍 ID
+      const summaryBookId = `${contact.worldBook}_summary_auto`;
+      router.push(`/notes?catId=${contact.worldBook}&bookId=${summaryBookId}`);
+    } else {
+      alert("该角色暂未关联世界书或前情概要模块。");
+    }
+  };
+
   if (!contact) return <div className="bg-[#f5f5f5] h-screen"></div>;
 
   return (
@@ -357,6 +400,7 @@ export default function MemoryPage({ params }: PageProps) {
             <img
               src={contact.avatar || "🐱"}
               className="w-full h-full object-cover"
+              alt="avatar"
             />
           </div>
           <h2 className="font-bold text-lg mb-4">{contact.name}</h2>
@@ -402,7 +446,7 @@ export default function MemoryPage({ params }: PageProps) {
           />
         </Section>
 
-        {/* 2. 永久记忆分组 (重写部分) */}
+        {/* 2. 永久记忆分组 */}
         <Section
           title={`永久记忆分组 (${memoryGroups.length})`}
           action={
@@ -463,7 +507,7 @@ export default function MemoryPage({ params }: PageProps) {
                       </div>
                     </div>
 
-                    {/* 分组内容列表 (展开时显示) */}
+                    {/* 分组内容列表 */}
                     {isExpanded && (
                       <div className="bg-gray-50/50 border-t border-gray-100 animate-in slide-in-from-top-1 duration-200">
                         {group.items.length === 0 ? (
@@ -551,13 +595,22 @@ export default function MemoryPage({ params }: PageProps) {
             />
           </div>
 
+          {/* 🔥 模拟手动触发总结（演示用） */}
+          {autoSummary && (
+            <div
+              className="px-4 py-3 border-b border-gray-100 flex justify-between items-center active:bg-gray-50 cursor-pointer"
+              onClick={handleManualSummarize}
+            >
+              <span className="text-sm text-blue-500">⚡ 立即执行一次总结</span>
+              <Sparkles className="w-4 h-4 text-blue-500" />
+            </div>
+          )}
+
           <div
             className="px-4 py-3 flex justify-between items-center active:bg-gray-50 cursor-pointer"
-            onClick={() => alert("功能开发中：点击此处查看历史总结列表")}
+            onClick={handleViewHistory}
           >
-            <span className="text-sm">
-              查看历史总结 ({chatSummaries.length})
-            </span>
+            <span className="text-sm">查看历史总结 (跳转至世界书)</span>
             <ChevronRight className="w-4 h-4 text-gray-300" />
           </div>
         </Section>

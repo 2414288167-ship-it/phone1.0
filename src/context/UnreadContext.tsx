@@ -10,7 +10,7 @@ import { usePathname } from "next/navigation";
 
 // 提示音 Base64
 const SHORT_DING =
-  "data:audio/mp3;base64,SUQzBAAAAAABAFRYWFgAAAASAAADbWFqb3JfYnJhbmQAbXA0MgRYWFgAAAALAAADYW1pbm9yX3ZlcnNpb24AMABUWFhYAAAAEAAAA2NvbXBhdGlibGVfYnJhbmRzAGlzb21tcDQy//uQZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAZAAABxwADBQoMDxETFhcZGx4hIyUnKSwuMTM2ODs9P0JERkdJS0xOUVJTVldeYWNjZmhpbG5xc3Z4ent9foCDhIWIio2OkJOVl5mbnp+goqOmqKqsrrCztLm7vb/CxMbHycvMz9HT1dfZ3N3f4OLj5efp7O3v8PHy9Pf5+/0AAAAATGF2YzU4LjkxLjEwMAAAAAAAAAAAAAAA//uQZAAP8AAAaQAAAADgAAA0gAAAAABAAABpAAAABAAAADSAAAAENuCngAAAAAAABMAJBNwF/wAAAAAAD/8zM/jQngAAAAA//7kGQAD/AAAGkAAAAEAAAANIAAAAAAQAAAaQAAAAQAAAA0gAAABAAAAEAAAAAAABAAAAAAAAAAAAAAH/4AAQSkZGROhEUkL/8zM/jQngAAAAA//7kGQAD/AAAGkAAAAEAAAANIAAAAAAQAAAaQAAAAQAAAA0gAAABAAAAEAAAAAAABAAAAAAAAAAAAAAH/4AAQSkZGROhEUkL/8zM/jQngAAAAA//7kGQAD/AAAGkAAAAEAAAANIAAAAAAQAAAaQAAAAQAAAA0gAAABAAAAEAAAAAAABAAAAAAAAAAAAAAH/4AAQSkZGROhEUkL/8zM/jQngAAAAA//7kGQAD/AAAGkAAAAEAAAANIAAAAAAQAAAaQAAAAQAAAA0gAAABAAAAEAAAAAAABAAAAAAAAAAAAAAH/4AAQSkZGROhEUkL/8zM/jQngAAAAA";
+  "data:audio/mp3;base64,SUQzBAAAAAABAFRYWFgAAAASAAADbWFqb3JfYnJhbmQAbXA0MgRYWFgAAAALAAADYW1pbm9yX3ZlcnNpb24AMABUWFhYAAAAEAAAA2NvbXBhdGlibGVfYnJhbmRzAGlzb21tcDQy//uQZAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAASW5mbwAAAA8AAAAZAAABxwADBQoMDxETFhcZGx4hIyUnKSwuMTM2ODs9P0JERkdJS0xOUVJTVldeYWNjZmhpbG5xc3Z4ent9foCDhIWIio2OkJOVl5mbnp+goqOmqKqsrrCztLm7vb/CxMbHycvMz9HT1dfZ3N3f4OLj5efp7O3v8PHy9Pf5+/0AAAAATGF2YzU4LjkxLjEwMAAAAAAAAAAAAAAA//uQZAAP8AAAaQAAAADgAAA0gAAAAABAAABpAAAABAAAADSAAAAENuCngAAAAAAABMAJBNwF/wAAAAAAD/8zM/jQngAAAAA//7kGQAD/AAAGkAAAAEAAAANIAAAAAAQAAAaQAAAAQAAAA0gAAABAAAAEAAAAAAABAAAAAAAAAAAAAAH/4AAQSkZGROhEUkL/8zM/jQngAAAAA//7kGQAD/AAAGkAAAAEAAAANIAAAAAAQAAAaQAAAAQAAAA0gAAABAAAAEAAAAAAABAAAAAAAAAAAAAAH/4AAQSkZGROhEUkL/8zM/jQngAAAAA//7kGQAD/AAAGkAAAAEAAAANIAAAAAAQAAAaQAAAAQAAAA0gAAABAAAAEAAAAAAABAAAAAAAAAAAAAAH/4AAQSkZGROhEUkL/8zM/jQngAAAAA";
 
 const DEFAULT_RINGTONE: Ringtone = {
   id: "default",
@@ -56,7 +56,7 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
     pathnameRef.current = pathname;
   }, [pathname]);
 
-  // --- 初始化加载 ---
+  // --- 初始化加载 (修复逻辑) ---
   useEffect(() => {
     if (typeof window !== "undefined") {
       // 1. 加载未读数
@@ -67,43 +67,61 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
         } catch (e) {}
       }
 
-      // 2. 加载自定义铃声
-      const savedRingtones = localStorage.getItem("custom_ringtones");
-      if (savedRingtones) {
-        try {
-          const parsed = JSON.parse(savedRingtones);
-          // 确保默认铃声在第一个
-          const customOnly = parsed.filter((r: any) => r.id !== "default");
-          setRingtones([DEFAULT_RINGTONE, ...customOnly]);
-        } catch (e) {
-          console.error("加载铃声失败", e);
-        }
-      }
+      // 2. 加载铃声和当前选中项 (在一个流程里处理，防止状态不同步)
+      try {
+        const savedRingtonesStr = localStorage.getItem("custom_ringtones");
+        const savedCurrentId = localStorage.getItem("current_ringtone_id");
 
-      // 3. 加载当前选中的 ID
-      const savedCurrentId = localStorage.getItem("current_ringtone_id");
-      if (savedCurrentId) {
-        // 这里直接设置 State，不触发保存操作
-        setCurrentRingtoneId(savedCurrentId);
+        let loadedRingtones = [DEFAULT_RINGTONE];
+
+        if (savedRingtonesStr) {
+          const parsed = JSON.parse(savedRingtonesStr);
+          // 过滤掉重复的 default
+          const customOnly = parsed.filter((r: any) => r.id !== "default");
+          loadedRingtones = [DEFAULT_RINGTONE, ...customOnly];
+        }
+
+        setRingtones(loadedRingtones);
+
+        // 检查保存的 ID 是否依然有效，如果无效则回退到 default
+        if (savedCurrentId) {
+          const exists = loadedRingtones.some((r) => r.id === savedCurrentId);
+          if (exists) {
+            setCurrentRingtoneId(savedCurrentId);
+          } else {
+            setCurrentRingtoneId("default");
+            localStorage.setItem("current_ringtone_id", "default");
+          }
+        }
+      } catch (e) {
+        console.error("初始化铃声失败", e);
       }
 
       if ("Notification" in window && Notification.permission === "default") {
         Notification.requestPermission();
       }
     }
-  }, []); // 空依赖数组，确保只在挂载时执行一次
+  }, []);
 
-  // 自动保存未读数 (这个没问题，保留)
+  // 自动保存未读数
   useEffect(() => {
     localStorage.setItem("unread_counts", JSON.stringify(unreadCounts));
   }, [unreadCounts]);
 
-  // 🔥🔥🔥 核心修改：删除了自动保存 currentRingtoneId 的 useEffect 🔥🔥🔥
-  // 防止页面加载时因为初始值是 "default" 而覆盖了本地存储
+  // ❌ 核心修改：绝对不要在这里写 useEffect(() => save(currentRingtoneId))，会导致刷新页面时重置
 
   const totalUnread = Object.values(unreadCounts).reduce((a, b) => a + b, 0);
 
+  // --- 铃声操作 ---
   const addRingtone = async (name: string, file: File) => {
+    // 限制文件大小 (例如 3MB)
+    if (file.size > 3 * 1024 * 1024) {
+      alert(
+        "铃声文件过大(超过3MB)，无法保存到浏览器缓存中，请使用更小的文件。"
+      );
+      return;
+    }
+
     return new Promise<void>((resolve, reject) => {
       const reader = new FileReader();
       reader.onload = (e) => {
@@ -114,42 +132,58 @@ export function UnreadProvider({ children }: { children: React.ReactNode }) {
           url: base64,
         };
 
-        setRingtones((prev) => {
-          const updated = [...prev, newRingtone];
-          const customOnly = updated.filter((r) => r.id !== "default");
-          localStorage.setItem("custom_ringtones", JSON.stringify(customOnly));
-          return updated;
-        });
+        try {
+          // 1. 先尝试保存到 localStorage，如果满了会报错
+          const currentCustom = JSON.parse(
+            localStorage.getItem("custom_ringtones") || "[]"
+          );
+          const newCustom = [...currentCustom, newRingtone];
+          localStorage.setItem("custom_ringtones", JSON.stringify(newCustom));
 
-        // 添加后自动选中并保存
-        selectRingtone(newRingtone.id);
-        resolve();
+          // 2. 如果保存成功，再更新 React 状态
+          setRingtones((prev) => [...prev, newRingtone]);
+
+          // 3. 自动选中并保存 ID
+          selectRingtone(newRingtone.id);
+
+          resolve();
+        } catch (err) {
+          console.error(err);
+          alert(
+            "存储空间已满！浏览器无法保存更多铃声，请删除一些旧铃声后再试。"
+          );
+          reject(err);
+        }
       };
       reader.onerror = reject;
       reader.readAsDataURL(file);
     });
   };
 
-  // 🔥🔥🔥 修改：在选择时手动保存 🔥🔥🔥
   const selectRingtone = (id: string) => {
     setCurrentRingtoneId(id);
+    // 🔥 手动保存，确保安全
     localStorage.setItem("current_ringtone_id", id);
   };
 
-  // 🔥🔥🔥 修改：删除时如果涉及到当前选中，也要手动更新存储 🔥🔥🔥
   const deleteRingtone = (id: string) => {
     if (id === "default") return;
 
-    setRingtones((prev) => {
-      const updated = prev.filter((r) => r.id !== id);
-      const customOnly = updated.filter((r) => r.id !== "default");
-      localStorage.setItem("custom_ringtones", JSON.stringify(customOnly));
-      return updated;
-    });
+    // 1. 更新 localStorage
+    try {
+      const currentCustom = JSON.parse(
+        localStorage.getItem("custom_ringtones") || "[]"
+      );
+      const newCustom = currentCustom.filter((r: any) => r.id !== id);
+      localStorage.setItem("custom_ringtones", JSON.stringify(newCustom));
+    } catch (e) {}
 
+    // 2. 更新状态
+    setRingtones((prev) => prev.filter((r) => r.id !== id));
+
+    // 3. 如果删的是当前选中的，回退到默认
     if (currentRingtoneId === id) {
-      setCurrentRingtoneId("default");
-      localStorage.setItem("current_ringtone_id", "default");
+      selectRingtone("default");
     }
   };
 

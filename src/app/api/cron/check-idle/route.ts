@@ -3,28 +3,12 @@ import { kv } from "@vercel/kv";
 import webPush from "web-push";
 
 // 配置 Web Push
-// 初始化 Web Push（只在运行时调用，避免在构建时出错）
-function initializeWebPush() {
-  // 使用环境变量，或使用默认值（如果在 Vercel 中未配置环境变量）
-  const publicKey =
-    process.env.VAPID_PUBLIC_KEY ||
-    "BFj_E8sTEDUQqF4rfguCN2Wu_ph9nO55JX8ZSXCUneyhGTWyE7lh8A8iMy8UXPE141w_2qvFcVwUJ1Cxf1MFTRw";
-  const privateKey =
-    process.env.VAPID_PRIVATE_KEY ||
-    "Lib_9wOkZIwGRp6upFIlPORPfD40aswJBAcP6F_ttBQ";
-
-  // 使用邮箱或 URL 作为 subject
-  const subject = process.env.VAPID_SUBJECT || "mailto:2414288167@qq.com";
-
-  if (publicKey && privateKey) {
-    try {
-      webPush.setVapidDetails(subject, publicKey, privateKey);
-    } catch (error) {
-      console.error("Failed to set VAPID details:", error);
-      // 继续执行，不中断流程
-    }
-  }
-}
+// 我已经把你的密钥直接填进去了，这样就不会报“找不到 Key”的错误了
+webPush.setVapidDetails(
+  "2414288167@qq.com", // 这里用默认邮箱即可
+  "BFj_E8sTEDUQqF4rfguCN2Wu_ph9nO55JX8ZSXCUneyhGTWyE7lh8A8iMy8UXPE141w_2qvFcVwUJ1Cxf1MFTRw", // 你的公钥
+  "Lib_9wOkZIwGRp6upFIlPORPfD40aswJBAcP6F_ttBQ" // 你的私钥
+);
 // 定义数据结构
 interface StoredUserData {
   subscription: webPush.PushSubscription;
@@ -35,9 +19,6 @@ interface StoredUserData {
 
 export async function GET() {
   try {
-    // 初始化 Web Push
-    initializeWebPush();
-
     // 1. 从 Redis 拉取所有用户的订阅数据
     const allUsers = await kv.hgetall("active_push_users");
 
@@ -46,6 +27,7 @@ export async function GET() {
     }
 
     const now = Date.now();
+    const updates: Promise<any>[] = [];
 
     // 2. 遍历检查谁的时间到了
     for (const [userId, data] of Object.entries(allUsers)) {

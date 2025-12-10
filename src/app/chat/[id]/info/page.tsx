@@ -363,7 +363,7 @@ export default function ChatInfoPage({ params }: PageProps) {
           <MenuItem label="查找聊天记录" onClick={() => setIsSearching(true)} />
           {/* ✅ 新增：记忆管理入口 */}
           <MenuItem
-            label="记忆与生理周期管理"
+            label="记忆总结"
             onClick={() => router.push(`/chat/${id}/info/memory`)}
           />
         </div>

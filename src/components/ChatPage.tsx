@@ -3,15 +3,7 @@ import React, { useState, useRef, useEffect } from "react";
 import Link from "next/link";
 import MessageList, { Message } from "@/components/MessageList";
 import { InputArea } from "@/components/InputArea";
-import {
-  Menu,
-  ChevronLeft,
-  Share,
-  Star,
-  Trash2,
-  X,
-  BookMarked,
-} from "lucide-react";
+import { Menu, ChevronLeft, Share, Star, Trash2, X } from "lucide-react";
 import { useAI } from "@/context/AIContext";
 import { useUnread } from "@/context/UnreadContext";
 
@@ -24,18 +16,21 @@ const blobToBase64 = (blob: Blob): Promise<string> => {
   });
 };
 
+interface ChatPageProps {
+  conversationId: string;
+  contactName?: string;
+}
+
 interface UserProfile {
   avatar: string;
   personas: { id: string; name: string; avatar: string }[];
 }
 
-interface PageProps {
-  params: { id: string };
-}
-
-export default function ChatPage({ params }: PageProps) {
-  const conversationId = params?.id || "";
-
+export default function ChatPage({
+  conversationId,
+  contactName = "AI助手",
+}: ChatPageProps) {
+  // ✅ 获取 regenerateChat
   const { requestAIReply, getChatState, triggerActiveMessage, regenerateChat } =
     useAI();
   const { clearUnread } = useUnread();
@@ -47,6 +42,7 @@ export default function ChatPage({ params }: PageProps) {
   const [contactInfo, setContactInfo] = useState<any>(null);
   const [myAvatar, setMyAvatar] = useState<string>("");
 
+  // ✅ 多选模式状态
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
@@ -59,53 +55,6 @@ export default function ChatPage({ params }: PageProps) {
     if (savedMsgs) setMessages(JSON.parse(savedMsgs));
   };
 
-  // --- 1. 生理期感知提示词 ---
-  const getMenstrualPrompt = (contact: any) => {
-    if (!contact?.menstrualData) return "";
-    const { lastDate, duration, cycle } = contact.menstrualData;
-    if (!lastDate) return "";
-
-    const start = new Date(lastDate);
-    const today = new Date();
-    const oneDay = 24 * 60 * 60 * 1000;
-    const diffDays = Math.floor((today.getTime() - start.getTime()) / oneDay);
-    const currentCycleDay = diffDays % cycle;
-
-    if (currentCycleDay >= 0 && currentCycleDay < duration) {
-      const dayCount = currentCycleDay + 1;
-      return `\n\n[System Note: User is currently on day ${dayCount} of her menstrual period. She might feel physical discomfort or emotional fluctuations. Please naturally show care, comfort her, or offer gentle company in your character's tone. Do NOT mention "System Note" or "AI". Just act like you know and care.]`;
-    }
-    if (currentCycleDay >= cycle - 2) {
-      return `\n\n[System Note: User's menstrual period is expected to start in 1-2 days. She might be irritable or tired. Be extra patient and gentle.]`;
-    }
-    return "";
-  };
-
-  // --- 2. ✅ 新增：永久记忆注入逻辑 ---
-  const getMemoryPrompt = (contact: any) => {
-    // 读取 memoryGroups
-    const groups = contact.permanentMemory || [];
-    if (!Array.isArray(groups) || groups.length === 0) return "";
-
-    let memoryText = "\n\n[Long-term Memory / Important Facts about User]:\n";
-
-    // 遍历分组
-    groups.forEach((group: any) => {
-      // 如果是旧数据结构(没有items)，跳过
-      if (!group.items) return;
-      if (group.items.length === 0) return;
-
-      memoryText += `\n### ${group.title}:\n`;
-      group.items.forEach((item: any) => {
-        memoryText += `- ${item.content}\n`;
-      });
-    });
-
-    memoryText +=
-      "\n[Instruction: Keep these memories in mind. If the user mentions related topics, reference these facts naturally.]";
-    return memoryText;
-  };
-
   useEffect(() => {
     if (conversationId && typeof window !== "undefined") {
       const contactsStr = localStorage.getItem("contacts");
@@ -116,32 +65,17 @@ export default function ChatPage({ params }: PageProps) {
           (c: any) => String(c.id) === String(conversationId)
         );
         if (currentContact) {
-          // 获取各种提示词
-          const periodPrompt = getMenstrualPrompt(currentContact);
-          const memoryPrompt = getMemoryPrompt(currentContact); // ✅ 获取记忆提示词
-
-          // 用户喜好提示词
-          const prefPrompt = currentContact.userPreferences
-            ? `\n\n[User Preferences/Dislikes]:\n${currentContact.userPreferences}`
-            : "";
-
           setContactInfo({
             ...currentContact,
             name: currentContact.remark || currentContact.name,
             aiName: currentContact.aiName || currentContact.name,
-            // 🔥 将所有“外挂”记忆拼接到 AI 人设后面
-            aiPersona:
-              (currentContact.aiPersona || "") +
-              prefPrompt +
-              memoryPrompt +
-              periodPrompt,
             myNickname: "我",
           });
         } else {
           setContactInfo({
-            name: "AI角色",
+            name: contactName,
             avatar: "🐱",
-            aiName: "AI角色",
+            aiName: contactName,
             myNickname: "我",
           });
         }
@@ -173,9 +107,8 @@ export default function ChatPage({ params }: PageProps) {
       reloadMessages();
       clearUnread(conversationId);
     }
-  }, [conversationId, clearUnread]);
+  }, [conversationId, clearUnread, contactName]);
 
-  // 监听更新事件
   useEffect(() => {
     const handleUpdate = (e: CustomEvent) => {
       if (String(e.detail.conversationId) === String(conversationId)) {
@@ -189,6 +122,7 @@ export default function ChatPage({ params }: PageProps) {
   }, [conversationId, clearUnread]);
 
   useEffect(() => {
+    // 仅在非多选模式下自动滚动
     if (!isSelectionMode) {
       messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
     }
@@ -225,89 +159,6 @@ export default function ChatPage({ params }: PageProps) {
     });
   };
 
-  // ✅ 升级版：存入永久记忆逻辑（支持分组）
-  const handleSaveToMemory = () => {
-    if (selectedIds.size === 0) return;
-
-    const selectedMsgs = messages.filter((m) => selectedIds.has(m.id));
-    if (!conversationId) return;
-
-    const contactsStr = localStorage.getItem("contacts");
-    if (!contactsStr) return;
-
-    try {
-      const contacts = JSON.parse(contactsStr);
-      const updatedContacts = contacts.map((c: any) => {
-        if (String(c.id) === String(conversationId)) {
-          let existingData = c.permanentMemory || [];
-
-          if (
-            Array.isArray(existingData) &&
-            existingData.length > 0 &&
-            !existingData[0].items
-          ) {
-            existingData = [
-              {
-                id: "default_group",
-                title: "默认分组",
-                items: existingData,
-              },
-            ];
-          } else if (existingData.length === 0) {
-            existingData = [
-              {
-                id: "default_group",
-                title: "未分类收藏",
-                items: [],
-              },
-            ];
-          }
-
-          const newMemories = selectedMsgs.map((msg) => ({
-            id: msg.id,
-            content: msg.content,
-            date: new Date().toISOString(),
-            source: "chat_selection",
-          }));
-
-          const targetGroup = existingData[0];
-          const contentSet = new Set(
-            targetGroup.items.map((m: any) => m.content)
-          );
-          const uniqueNewMemories = newMemories.filter(
-            (m) => !contentSet.has(m.content)
-          );
-
-          targetGroup.items = [...targetGroup.items, ...uniqueNewMemories];
-
-          return {
-            ...c,
-            permanentMemory: existingData,
-          };
-        }
-        return c;
-      });
-
-      localStorage.setItem("contacts", JSON.stringify(updatedContacts));
-      // ✅ 触发更新事件，让界面（比如记忆管理页）能感知到
-      window.dispatchEvent(
-        new CustomEvent("chat_updated", { detail: { conversationId } })
-      );
-
-      alert(
-        `已将 ${selectedMsgs.length} 条消息存入记忆分组：“${
-          updatedContacts.find(
-            (c: any) => String(c.id) === String(conversationId)
-          ).permanentMemory[0].title
-        }”`
-      );
-      exitSelectionMode();
-    } catch (e) {
-      console.error("保存记忆失败", e);
-      alert("保存失败");
-    }
-  };
-
   const handleBatchDelete = () => {
     if (selectedIds.size === 0) return;
     if (window.confirm(`确定删除这 ${selectedIds.size} 条消息吗？`)) {
@@ -335,6 +186,7 @@ export default function ChatPage({ params }: PageProps) {
     });
   };
 
+  // ✅ 智能重新说
   const handleResendMessage = (msg: Message) => {
     if (conversationId && contactInfo) {
       regenerateChat(conversationId, msg.id, contactInfo);
@@ -410,12 +262,12 @@ export default function ChatPage({ params }: PageProps) {
   const getHeaderStatus = () => {
     if (aiStatus === "thinking") return "对方正在思考...";
     if (aiStatus === "typing") return "对方正在输入...";
-    return contactInfo?.name || "AI角色";
+    return contactInfo?.name || contactName;
   };
   const safeContactInfo = contactInfo || {
-    name: "AI角色",
+    name: contactName,
     avatar: "🐱",
-    aiName: "AI角色",
+    aiName: contactName,
     myNickname: "我",
   };
 
@@ -476,6 +328,7 @@ export default function ChatPage({ params }: PageProps) {
           onResendMessage={handleResendMessage}
           onContinueMessage={handleContinueMessage}
           onEditMessage={handleEditMessage}
+          // ✅ 传递多选 Props
           isSelectionMode={isSelectionMode}
           selectedIds={selectedIds}
           onToggleSelection={toggleSelection}
@@ -484,15 +337,9 @@ export default function ChatPage({ params }: PageProps) {
         <div ref={messagesEndRef} />
       </div>
 
+      {/* 底部根据模式切换 */}
       {isSelectionMode ? (
         <div className="h-16 bg-white border-t flex items-center justify-around px-4 z-50 shadow-up">
-          <button
-            onClick={handleSaveToMemory}
-            className="flex flex-col items-center gap-1 text-gray-600 active:text-green-600"
-          >
-            <BookMarked className="w-5 h-5" />
-            <span className="text-[10px]">存记忆</span>
-          </button>
           <button
             onClick={() => alert("暂未实现")}
             className="flex flex-col items-center gap-1"
