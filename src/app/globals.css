@@ -1,0 +1,153 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+* {
+  @apply box-border;
+}
+
+html,
+body {
+  @apply bg-darker text-white antialiased;
+}
+
+a {
+  @apply text-accent hover:opacity-80 transition-opacity;
+}
+
+button:disabled {
+  @apply opacity-50 cursor-not-allowed;
+}
+
+/* Mobile helper classes */
+@layer components {
+  .safe-area-bottom {
+    padding-bottom: max(1rem, env(safe-area-inset-bottom));
+  }
+
+  .mobile-hero-bg {
+    background: linear-gradient(
+      180deg,
+      rgba(15, 23, 42, 0.9) 0%,
+      rgba(10, 14, 39, 0.8) 100%
+    );
+  }
+
+  .card-overlap {
+    margin-top: -3.5rem;
+  }
+}
+
+/* Precise hero/card styles matching reference */
+@layer components {
+  .hero-wrapper {
+    display: flex;
+    justify-content: center;
+    padding: 1rem 1rem 0 1rem;
+    background-color: #475670; /* page background similar to reference */
+  }
+
+  .hero-card {
+    width: 100%;
+    max-width: 720px;
+    height: 260px;
+    border-radius: 20px;
+    overflow: hidden;
+    position: relative;
+    box-shadow: 0 8px 30px rgba(2, 6, 23, 0.5);
+    background: linear-gradient(
+      180deg,
+      rgba(255, 255, 255, 0.95) 0%,
+      rgba(245, 247, 250, 0.9) 60%
+    );
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .hero-bg-image {
+    position: absolute;
+    inset: 0;
+    background-position: center;
+    background-size: cover;
+    filter: blur(6px) saturate(0.8) contrast(0.95);
+    opacity: 0.35;
+  }
+
+  .hero-inner {
+    position: relative;
+    z-index: 2;
+    width: 100%;
+    padding: 2.5rem 1.25rem 1.25rem 1.25rem;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .hero-avatar {
+    width: 92px;
+    height: 92px;
+    border-radius: 9999px;
+    background: white;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 6px 24px rgba(2, 6, 23, 0.35);
+    transform: translateY(-46px);
+    border: 6px solid rgba(255, 255, 255, 0.9);
+  }
+
+  .hero-name {
+    margin-top: -18px;
+    font-weight: 700;
+    font-size: 20px;
+    color: #0b1220;
+  }
+
+  .hero-handle {
+    margin-top: 6px;
+    color: rgba(11, 18, 32, 0.55);
+    font-size: 13px;
+  }
+
+  .hero-subtitle {
+    margin-top: 10px;
+    color: rgba(11, 18, 32, 0.6);
+    font-size: 14px;
+  }
+
+  .hero-dot {
+    width: 8px;
+    height: 8px;
+    background: rgba(11, 18, 32, 0.25);
+    border-radius: 9999px;
+    margin-top: 8px;
+  }
+
+  /* bottom white wave */
+  .bottom-wave {
+    position: absolute;
+    left: 0;
+    right: 0;
+    bottom: -4px;
+    height: 140px;
+    pointer-events: none;
+  }
+}
+
+/* Modal / scroll-lock helpers */
+@layer components {
+  /* 当页面存在 .modal-open 时，锁定背景滚动 */
+  .modal-open {
+    overflow: hidden !important;
+    height: 100% !important;
+    overscroll-behavior: none !important;
+    -webkit-overflow-scrolling: auto !important;
+  }
+
+  /* 弹窗内部可滚动区域（确保触摸滚动只在弹窗内生效） */
+  .modal-content-scrollable {
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+}

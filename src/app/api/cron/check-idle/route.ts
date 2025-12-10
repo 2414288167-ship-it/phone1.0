@@ -1,0 +1,96 @@
+import { NextResponse } from "next/server";
+import { kv } from "@vercel/kv";
+import webPush from "web-push";
+
+// 配置 Web Push
+// 初始化 Web Push（只在运行时调用，避免在构建时出错）
+function initializeWebPush() {
+  // 使用环境变量，或使用默认值（如果在 Vercel 中未配置环境变量）
+  const publicKey =
+    process.env.VAPID_PUBLIC_KEY ||
+    "BFj_E8sTEDUQqF4rfguCN2Wu_ph9nO55JX8ZSXCUneyhGTWyE7lh8A8iMy8UXPE141w_2qvFcVwUJ1Cxf1MFTRw";
+  const privateKey =
+    process.env.VAPID_PRIVATE_KEY ||
+    "Lib_9wOkZIwGRp6upFIlPORPfD40aswJBAcP6F_ttBQ";
+
+  // 使用邮箱或 URL 作为 subject
+  const subject = process.env.VAPID_SUBJECT || "mailto:2414288167@qq.com";
+
+  if (publicKey && privateKey) {
+    try {
+      webPush.setVapidDetails(subject, publicKey, privateKey);
+    } catch (error) {
+      console.error("Failed to set VAPID details:", error);
+      // 继续执行，不中断流程
+    }
+  }
+}
+// 定义数据结构
+interface StoredUserData {
+  subscription: webPush.PushSubscription;
+  nextTriggerTime: number;
+  contactInfo: any;
+  lastMessage: string;
+}
+
+export async function GET() {
+  try {
+    // 初始化 Web Push
+    initializeWebPush();
+
+    // 1. 从 Redis 拉取所有用户的订阅数据
+    const allUsers = await kv.hgetall("active_push_users");
+
+    if (!allUsers) {
+      return NextResponse.json({ message: "No active users" });
+    }
+
+    const now = Date.now();
+
+    // 2. 遍历检查谁的时间到了
+    for (const [userId, data] of Object.entries(allUsers)) {
+      const userData = data as StoredUserData;
+
+      // 检查是否到了触发时间 (允许 1分钟的误差缓冲)
+      if (userData.nextTriggerTime && now >= userData.nextTriggerTime) {
+        console.log(`🚀 触发用户 ${userId} 的推送`);
+
+        // 3. (可选) 调用 OpenAI 生成回复
+        // 为了简单，这里先写死，等你跑通了再把 fetch OpenAI 的逻辑搬过来
+        const aiText = `[云端推送] 嘿，好久不见，我是 ${
+          userData.contactInfo.name || "AI"
+        }！`;
+
+        // 4. 发送推送
+        try {
+          await webPush.sendNotification(
+            userData.subscription,
+            JSON.stringify({
+              title: userData.contactInfo.name || "AI 消息",
+              body: aiText,
+              url: `/chat/${userId}`,
+            })
+          );
+
+          // 5. 推送成功后，从数据库移除该任务，防止重复推送
+          // 或者你可以更新 nextTriggerTime 到下一次
+          await kv.hdel("active_push_users", userId);
+        } catch (error: any) {
+          console.error(`推送失败 ${userId}:`, error);
+          // 如果是 410 Gone，说明用户取消了订阅，清理死数据
+          if (error.statusCode === 410) {
+            await kv.hdel("active_push_users", userId);
+          }
+        }
+      }
+    }
+
+    return NextResponse.json({
+      success: true,
+      checked: Object.keys(allUsers).length,
+    });
+  } catch (error) {
+    console.error("Cron Error:", error);
+    return NextResponse.json({ error: "Cron Failed" }, { status: 500 });
+  }
+}

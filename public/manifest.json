@@ -1,0 +1,17 @@
+{
+  "name": "ChatGPT-like AI Chat Web App",
+  "short_name": "AI Chat",
+  "description": "A mobile-first AI chat application with voice interaction and streaming responses",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#050a1f",
+  "theme_color": "#10a37f",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "64x64",
+      "type": "image/x-icon"
+    }
+  ]
+}
