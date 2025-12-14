@@ -161,6 +161,38 @@ IF the user implies a plan/schedule/arrangement:
 4. DO NOT split the response into multiple messages. Keep it in ONE message.
 `;
 };
+
+// 🔥🔥🔥 新增：读取用户当前人设 (User Persona) 的函数 🔥🔥🔥
+const getUserPersonaContext = () => {
+  if (typeof window === "undefined") return "";
+  try {
+    const saved = localStorage.getItem("user_profile_v4");
+    if (!saved) return "";
+
+    const profile = JSON.parse(saved);
+    const currentId = profile.currentPersonaId;
+    // 找到当前选中的人设，如果找不到则使用第一个
+    const currentPersona =
+      profile.personas.find((p: any) => p.id === currentId) ||
+      profile.personas[0];
+
+    if (!currentPersona) return "";
+
+    // 构建提示词
+    return `
+<<< USER IDENTITY (IMPORTANT) >>>
+【你正在与之对话的用户身份】
+用户姓名: ${currentPersona.name}
+用户人设描述/性格: ${currentPersona.description}
+
+(指令：请根据用户的这个身份设定与他/她互动。如果用户描述中包含特定的性格或背景，请在对话中体现出你知道这些信息。)
+`;
+  } catch (e) {
+    console.error("[AIContext] 读取用户人设失败", e);
+    return "";
+  }
+};
+
 const getWorldBookContent = (categoryId: string | number): string => {
   if (!categoryId || categoryId === "default") return "";
   try {
@@ -349,7 +381,20 @@ export function AIProvider({ children }: { children: React.ReactNode }) {
         return { role: m.role, content: cleanContent };
       });
 
-      // 🔥🔥🔥 核心修改开始：强制注入 System 指令到队列末尾 🔥🔥🔥
+      // 🔥🔥🔥 核心修改：强制注入用户人设 (User Persona) 🔥🔥🔥
+      // 我们将其放在消息队列的末尾（system 消息），以确保 AI 拥有最新的上下文记忆
+      const userPersonaPrompt = getUserPersonaContext();
+      if (userPersonaPrompt) {
+        apiMessages.push({
+          role: "system",
+          content: userPersonaPrompt,
+        });
+        console.log(
+          `[AI核心] 已注入用户人设: ${userPersonaPrompt.substring(0, 50)}...`
+        );
+      }
+
+      // 🔥🔥🔥 核心修改：强制注入 System 指令到队列末尾 🔥🔥🔥
       // 这样 AI 会在生成回复前的最后一刻看到这条指令，权重最高！
       if (contactInfo.syncTasks) {
         const tasksContext = getTasksContext();
@@ -385,6 +430,7 @@ export function AIProvider({ children }: { children: React.ReactNode }) {
             stickerPrompt,
             currentStyle,
             tasksContent, // ✨ 传递任务上下文
+            userPersonaPrompt, // ✨ 传递用户人设上下文
           },
           config: {
             apiKey: userApiKey,

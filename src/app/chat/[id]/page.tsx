@@ -25,6 +25,7 @@ import {
 import { useAI } from "@/context/AIContext";
 import { useUnread } from "@/context/UnreadContext";
 import { useMusicPlayer } from "@/context/MusicContext";
+import VoiceCallOverlay from "@/components/VoiceCallOverlay";
 
 // --- 辅助函数：Blob 转 Base64 ---
 const blobToBase64 = (blob: Blob): Promise<string> => {
@@ -143,6 +144,20 @@ interface PageProps {
 }
 
 export default function ChatPage({ params }: PageProps) {
+  // 🔥🔥🔥 新增/修改 通话状态 🔥🔥🔥
+  const [isCallOpen, setIsCallOpen] = useState(false);
+  const [callDirection, setCallDirection] = useState<"outgoing" | "incoming">(
+    "outgoing"
+  );
+
+  // 🔥🔥🔥 测试专用：暴露给控制台，用于测试“AI打给我”的效果 🔥🔥🔥
+  useEffect(() => {
+    (window as any).testIncomingCall = () => {
+      setCallDirection("incoming");
+      setIsCallOpen(true);
+    };
+  }, []);
+
   // 1. 获取 Conversation ID
   const conversationId = params.id;
 
@@ -334,10 +349,14 @@ export default function ChatPage({ params }: PageProps) {
   // --- 🔥🔥🔥 核心修复：滚动逻辑 (防鬼畜版) 🔥🔥🔥 ---
 
   // 1. 滚动到底部 (执行者)
-  const scrollToBottom = (behavior: "smooth" | "auto" = "auto") => {
+  const scrollToBottom = (
+    behavior: "smooth" | "auto" = "auto",
+    force: boolean = false // 👈 新增参数：是否强制滚动
+  ) => {
     requestAnimationFrame(() => {
       if (scrollContainerRef.current) {
-        if (isUserInteracting.current || !isSticky.current) {
+        // 如果不是强制模式，才去检查交互状态和吸附状态
+        if (!force && (isUserInteracting.current || !isSticky.current)) {
           return;
         }
 
@@ -349,11 +368,14 @@ export default function ChatPage({ params }: PageProps) {
           behavior: behavior,
         });
 
-        setShowScrollButton(false);
+        // 如果是强制滚动，滚动开始后要隐藏按钮并重置吸附状态
+        if (force) {
+          setShowScrollButton(false);
+          isSticky.current = true;
+        }
       }
     });
   };
-
   // 2. 监听用户交互 (开始)
   const handleInteractionStart = () => {
     isUserInteracting.current = true;
@@ -946,6 +968,17 @@ export default function ChatPage({ params }: PageProps) {
         </Link>
       </header>
 
+      {/* 🔥🔥🔥 挂载组件，传入 direction 🔥🔥🔥 */}
+      <VoiceCallOverlay
+        isOpen={isCallOpen}
+        onClose={() => setIsCallOpen(false)}
+        contactInfo={{
+          name: safeContactInfo.name,
+          avatar: safeContactInfo.avatar || "default_avatar",
+        }}
+        direction={callDirection} // 👈 传入方向
+      />
+
       {/* 状态条 */}
       {isSharedMode && isPlaying && currentSong && (
         <div className="relative z-10 bg-gradient-to-r from-pink-500/10 via-purple-500/10 to-blue-500/10 px-4 py-2 flex items-center gap-2 justify-center backdrop-blur-md border-b border-pink-100/30 shadow-sm animate-in slide-in-from-top duration-300">
@@ -1031,9 +1064,11 @@ export default function ChatPage({ params }: PageProps) {
       {showScrollButton && !isSelectionMode && (
         <div
           className="absolute bottom-[80px] right-4 z-30 cursor-pointer animate-in fade-in slide-in-from-bottom-2 zoom-in-95 duration-200"
-          onClick={() => {
-            isUserInteracting.current = false; // 点击按钮，解除交互锁
-            scrollToBottom("smooth"); // 主动点击，可以使用平滑滚动
+          onClick={(e) => {
+            e.stopPropagation(); // 防止冒泡
+            isUserInteracting.current = false; // 解锁交互
+            isSticky.current = true; // 👈 关键：手动恢复吸附状态
+            scrollToBottom("smooth", true); // 👈 关键：传入 true 开启强制模式
           }}
         >
           <div className="bg-white text-[#07c160] shadow-md rounded-full p-2 border border-[#07c160]/20 flex items-center justify-center hover:bg-green-50 transition-colors active:scale-90">
@@ -1041,13 +1076,17 @@ export default function ChatPage({ params }: PageProps) {
           </div>
         </div>
       )}
-
       {!isSelectionMode ? (
         <InputArea
           input={input}
           isLoading={aiStatus === "thinking" || aiStatus === "typing"}
           onInputChange={setInput}
           onSendText={() => handleUserSend(input, "text")}
+          // 🔥🔥🔥 这里的修改关键：点击语音通话 -> 设置为 'outgoing' (我打给AI)
+          onStartCall={() => {
+            setCallDirection("outgoing");
+            setIsCallOpen(true);
+          }}
           // 🔥 绑定输入法状态 🔥
           onCompositionStart={() => setIsComposing(true)}
           onCompositionEnd={() => setIsComposing(false)}

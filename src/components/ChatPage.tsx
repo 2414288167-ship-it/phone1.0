@@ -14,6 +14,8 @@ import {
 } from "lucide-react";
 import { useAI } from "@/context/AIContext";
 import { useUnread } from "@/context/UnreadContext";
+// 🔥 引入通话覆盖层组件
+import VoiceCallOverlay from "@/components/VoiceCallOverlay";
 
 const blobToBase64 = (blob: Blob): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -43,11 +45,10 @@ export default function ChatPage({
   const { clearUnread } = useUnread();
 
   // --- 🔥 滚动控制核心 Ref ---
-  // isSticky: 标记"当前是否应该跟随到底部"。默认 true (跟随)
   const isSticky = useRef(true);
-  // isUserInteracting: 标记"用户正在操作"。如果为 true，强行暂停自动滚动
   const isUserInteracting = useRef(false);
 
+  // 容器 Ref
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [showScrollButton, setShowScrollButton] = useState(false);
 
@@ -61,9 +62,110 @@ export default function ChatPage({
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
 
+  // 🔥 通话相关状态
+  const [isCallOpen, setIsCallOpen] = useState(false);
+  const [callDirection, setCallDirection] = useState<"outgoing" | "incoming">(
+    "outgoing"
+  );
+
   const replyTimerRef = useRef<NodeJS.Timeout | null>(null);
-  // 交互锁定时器
   const interactionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // --- 🔥 通话功能逻辑区 ---
+
+  // 格式化秒数
+  const formatDuration = (seconds: number) => {
+    if (seconds === 0) return "已取消";
+    const h = Math.floor(seconds / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = seconds % 60;
+    if (h > 0)
+      return `通话时长 ${h}:${m.toString().padStart(2, "0")}:${s
+        .toString()
+        .padStart(2, "0")}`;
+    return `通话时长 ${m.toString().padStart(2, "0")}:${s
+      .toString()
+      .padStart(2, "0")}`;
+  };
+
+  // 处理通话结束的回调
+  const handleCallFinish = (
+    status: "completed" | "rejected" | "missed",
+    duration: number
+  ) => {
+    setIsCallOpen(false); // 关闭界面
+
+    let contentText = "";
+
+    // 生成气泡文字
+    if (status === "completed") {
+      contentText = formatDuration(duration);
+    } else {
+      // 拒接/取消/未接
+      if (callDirection === "outgoing") {
+        contentText = "对方已拒绝";
+        if (duration === 0) contentText = "已取消";
+      } else {
+        contentText = "已拒绝";
+      }
+    }
+
+    // 构建消息对象
+    const callMsg: Message = {
+      id: Date.now().toString(),
+      // role 决定气泡位置：outgoing(我发起的) -> user(右边), incoming(AI发起的) -> assistant(左边)
+      role: callDirection === "outgoing" ? "user" : "assistant",
+      // @ts-ignore: 忽略这里可能存在的类型检查，确保 MessageList 已更新支持 call_log
+      type: "call_log",
+      content: contentText,
+      timestamp: new Date(),
+      status: "sent",
+    };
+
+    setMessages((prev) => {
+      const newMsgs = [...prev, callMsg];
+      if (conversationId) {
+        localStorage.setItem(`chat_${conversationId}`, JSON.stringify(newMsgs));
+      }
+      return newMsgs;
+    });
+
+    // 滚动到底部
+    isSticky.current = true;
+    setTimeout(() => scrollToBottom("auto"), 100);
+  };
+
+  // 监听 AI 是否主动发起通话 (检测 [CALL_USER] 标签)
+  useEffect(() => {
+    if (messages.length === 0) return;
+    const lastMsg = messages[messages.length - 1];
+
+    // 只有 AI 的最新消息才检查，且当前没有通话
+    // 🔥 修复点：使用 (lastMsg.status as string) 绕过 TypeScript 的类型检查错误
+    if (
+      lastMsg.role === "assistant" &&
+      (lastMsg.status as string) !== "thinking" &&
+      !isCallOpen
+    ) {
+      if (
+        lastMsg.content.includes("[CALL_USER]") ||
+        lastMsg.content.includes("【发起语音通话】")
+      ) {
+        setCallDirection("incoming");
+        setIsCallOpen(true);
+      }
+    }
+  }, [messages, isCallOpen]);
+
+  // 暴露给控制台测试：window.testIncomingCall()
+  useEffect(() => {
+    (window as any).testIncomingCall = () => {
+      setCallDirection("incoming");
+      setIsCallOpen(true);
+    };
+  }, []);
+
+  // --- End 通话逻辑 ---
 
   const reloadMessages = () => {
     if (!conversationId) return;
@@ -139,72 +241,86 @@ export default function ChatPage({
       window.removeEventListener("chat_updated" as any, handleUpdate);
   }, [conversationId, clearUnread]);
 
-  // --- 🔥🔥🔥 终极滚动逻辑 (含交互锁) 🔥🔥🔥 ---
+  // --- 🔥🔥🔥 核弹级：全页面扫描滚动 🔥🔥🔥 ---
+  const forceScrollToBottom = () => {
+    const el = document.getElementById("chat-scroller");
+    if (el) el.scrollTop = el.scrollHeight;
 
-  // 1. 滚动到底部 (执行者)
-  const scrollToBottom = (behavior: "smooth" | "auto" = "auto") => {
     if (scrollContainerRef.current) {
-      scrollContainerRef.current.scrollTo({
-        top: scrollContainerRef.current.scrollHeight,
-        behavior: behavior,
-      });
-      // 只要触发了强制到底，就恢复锁定 (除非用户正在按着屏幕)
-      if (!isUserInteracting.current) {
-        isSticky.current = true;
-        setShowScrollButton(false);
+      scrollContainerRef.current.scrollTop =
+        scrollContainerRef.current.scrollHeight;
+    }
+
+    const allDivs = document.querySelectorAll("div");
+    allDivs.forEach((div) => {
+      if (
+        div.scrollHeight > div.clientHeight &&
+        div.style.overflow !== "hidden"
+      ) {
+        if (div.scrollTop < div.scrollHeight - div.clientHeight - 5) {
+          div.scrollTop = div.scrollHeight;
+        }
+      }
+    });
+
+    window.scrollTo(0, document.body.scrollHeight);
+  };
+
+  const scrollToBottom = (behavior: "smooth" | "auto" = "auto") => {
+    isSticky.current = true;
+    isUserInteracting.current = false;
+
+    if (scrollContainerRef.current) {
+      if (behavior === "auto") {
+        scrollContainerRef.current.scrollTop =
+          scrollContainerRef.current.scrollHeight;
+      } else {
+        scrollContainerRef.current.scrollTo({
+          top: scrollContainerRef.current.scrollHeight,
+          behavior: "smooth",
+        });
       }
     }
   };
 
-  // 2. 监听用户交互 (防抖)
-  // 当用户 触摸屏幕、滚动滚轮、按下鼠标 时触发
   const handleUserInteraction = () => {
     isUserInteracting.current = true;
-    // 同时也暂时解除锁定，防止手指一停就被拽回去
     isSticky.current = false;
-    setShowScrollButton(true);
 
     if (interactionTimeoutRef.current) {
       clearTimeout(interactionTimeoutRef.current);
     }
-    // 1秒后如果没有后续操作，认为交互结束，解除"交互锁"
-    // (注意：isSticky 不会自动变回 true，必须等用户滚到底部)
     interactionTimeoutRef.current = setTimeout(() => {
       isUserInteracting.current = false;
     }, 1000);
   };
 
-  // 3. 滚动位置监听
   const handleScroll = () => {
-    if (!scrollContainerRef.current) return;
-    const { scrollTop, scrollHeight, clientHeight } =
-      scrollContainerRef.current;
+    const container =
+      document.getElementById("chat-scroller") || scrollContainerRef.current;
+    if (!container) return;
 
-    // 物理距离
+    const div = container as HTMLDivElement;
+    const { scrollTop, scrollHeight, clientHeight } = div;
     const distance = scrollHeight - scrollTop - clientHeight;
 
-    // 阈值：20px
-    if (distance > 20) {
-      // 离底部远了 -> 用户在看历史
+    if (distance > 50) {
       isSticky.current = false;
       setShowScrollButton(true);
-    } else if (distance < 5) {
-      // 极其接近底部 -> 用户回到了最新
-      isSticky.current = true;
+    } else {
       setShowScrollButton(false);
+      if (distance < 20) {
+        isSticky.current = true;
+      }
     }
   };
 
-  // 4. 响应 AI 消息更新
   useEffect(() => {
-    // 只有当：1. 之前锁定在底部  AND  2. 用户现在没按着屏幕
     if (!isSelectionMode && isSticky.current && !isUserInteracting.current) {
-      // 使用 auto (瞬移)，防止动画冲突
       scrollToBottom("auto");
     }
   }, [messages, isSelectionMode, isPanelOpen]);
 
-  // --- 输入框逻辑 ---
   useEffect(() => {
     if (input.trim().length > 0 && replyTimerRef.current) {
       clearTimeout(replyTimerRef.current);
@@ -323,10 +439,9 @@ export default function ChatPage({
     });
     if (type === "text") setInput("");
 
-    // 用户发送时，强制锁定并滚动
     isSticky.current = true;
     isUserInteracting.current = false;
-    setTimeout(() => scrollToBottom("smooth"), 100);
+    setTimeout(() => scrollToBottom("auto"), 50);
 
     const isReadyToSendToAI = !(type === "audio" && !text);
     if (isReadyToSendToAI) {
@@ -349,6 +464,21 @@ export default function ChatPage({
     avatar: "🐱",
     aiName: contactName,
     myNickname: "我",
+  };
+
+  const handleButtonClick = (e: React.MouseEvent | React.TouchEvent) => {
+    e.stopPropagation();
+    e.preventDefault();
+    console.log("🔥 [ChatPage] 悬浮按钮被点击了！执行核弹级滚动！");
+
+    isUserInteracting.current = false;
+    isSticky.current = true;
+    setShowScrollButton(false);
+
+    forceScrollToBottom();
+    requestAnimationFrame(() => {
+      forceScrollToBottom();
+    });
   };
 
   return (
@@ -387,18 +517,24 @@ export default function ChatPage({
         </Link>
       </header>
 
-      {/* 
-        🔥 滚动容器 
-        - 绑定 onWheel, onTouchMove: 拦截用户意图
-        - 绑定 onScroll: 监听位置
-        - 移除 scroll-smooth
-      */}
+      {/* 挂载通话覆盖层 */}
+      <VoiceCallOverlay
+        isOpen={isCallOpen}
+        onClose={handleCallFinish}
+        contactInfo={{
+          name: safeContactInfo.name,
+          avatar: safeContactInfo.avatar || "default_avatar",
+        }}
+        direction={callDirection}
+      />
+
       <div
+        id="chat-scroller"
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        onWheel={handleUserInteraction} // 鼠标滚轮 -> 判定为交互
-        onTouchMove={handleUserInteraction} // 手指滑动 -> 判定为交互
-        onMouseDown={handleUserInteraction} // 拖动滚动条 -> 判定为交互
+        onWheel={handleUserInteraction}
+        onTouchMove={handleUserInteraction}
+        onMouseDown={handleUserInteraction}
         className="flex-1 overflow-y-auto px-1 pt-1 pb-7"
         style={{
           backgroundColor: bgImage ? "transparent" : "#f5f5f5",
@@ -424,26 +560,23 @@ export default function ChatPage({
           onToggleSelection={toggleSelection}
           onEnterSelectionMode={enterSelectionMode}
         />
-        {/* 底部垫片 */}
         <div className="h-4" />
       </div>
 
-      {/* ✨ 悬浮按钮：回到底部 ✨ */}
       {showScrollButton && !isSelectionMode && (
-        <div
-          className="absolute bottom-[80px] right-4 z-30 cursor-pointer animate-in fade-in slide-in-from-bottom-2 zoom-in-95 duration-200"
-          onClick={() => {
-            isUserInteracting.current = false; // 点击按钮，解除交互锁
-            scrollToBottom("smooth"); // 主动点击，可以使用平滑滚动
-          }}
+        <button
+          type="button"
+          className="fixed bottom-32 right-4 z-[9999] pointer-events-auto outline-none animate-in fade-in zoom-in duration-200 touch-manipulation"
+          onMouseDown={(e) => e.stopPropagation()}
+          onTouchStart={(e) => e.stopPropagation()}
+          onClick={handleButtonClick}
         >
-          <div className="bg-white text-[#07c160] shadow-md rounded-full p-2 border border-[#07c160]/20 flex items-center justify-center hover:bg-green-50 transition-colors active:scale-90">
-            <ChevronDown className="w-6 h-6" />
+          <div className="bg-white text-[#07c160] shadow-2xl rounded-full p-3 border border-[#07c160]/30 hover:bg-green-50 active:scale-90 transition-transform pointer-events-none">
+            <ChevronDown className="w-6 h-6 stroke-[3]" />
           </div>
-        </div>
+        </button>
       )}
 
-      {/* 底部输入框或多选操作栏 */}
       {isSelectionMode ? (
         <div className="h-16 bg-white border-t flex items-center justify-around px-4 z-50 shadow-up shrink-0">
           <button
@@ -482,10 +615,14 @@ export default function ChatPage({
           isLoading={aiStatus === "thinking" || aiStatus === "typing"}
           onInputChange={setInput}
           onSendText={() => handleUserSend(input, "text")}
+          onStartCall={() => {
+            setCallDirection("outgoing");
+            setIsCallOpen(true);
+          }}
           onPanelChange={(isOpen) => {
             setIsPanelOpen(isOpen);
             if (isSticky.current) {
-              setTimeout(() => scrollToBottom("smooth"), 300);
+              setTimeout(() => scrollToBottom("auto"), 300);
             }
           }}
           onSendAudio={async (text, duration, audioBlob, imageDesc) => {

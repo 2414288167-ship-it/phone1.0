@@ -17,7 +17,7 @@ import {
   Delete,
   FolderInput,
   Layers,
-  UploadCloud, // 新图标
+  UploadCloud,
 } from "lucide-react";
 import { useSpeechRecognition } from "@/hooks/useSpeechRecognition";
 
@@ -62,7 +62,7 @@ const EMOJI_LIST = [
   "😌",
   "😛",
   "😜",
-  "😝",
+  "😜",
   "🤤",
   "😒",
   "😓",
@@ -106,7 +106,6 @@ interface CustomSticker {
 const DEFAULT_STICKERS: CustomSticker[] = [
   {
     id: "s1",
-    // Base64 示例
     url: "data:image/gif;base64,R0lGODlhZABkAIQAAP///+7u7t3d3czMzbu7u6qqqmZmZjMzMwAAAP///wAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH/C05FVFNDQVBFMi4wAwEAAAAh+QQJBwAAACwAAAAAZABkAAAF/yAkjmRpnmiqrmzrvnAsz3Rt33iu73zv/8CgcEgsGo/IpHLJbDqf0Kh0Sq1ar9isdsvter/gsHhMLpvP6LR6zW673/C4fE6v2+/4vH7P7/v/gIGCg4SFhoeIiYqLjI2Oj5CRkpOUlZaXmJmam5ydnp+goaKjpKWmp6ipqqusra6vsLGys7S1tre4ubq7vL2+v8DBwsPExcbHyMnKy8zNzs/Q0dLT1NXW19jZ2tvc3d7f4OHi4+Tl5ufo6err7O3u7/Dx8vP09fb3+Pn6+/z9/v8AAwocSLCgwYMIEypcyLChw4cQI0qcSLGixYsYM2rcyLGjx48gQ4ocSbKkyZMoU/6aXMmypcuXMGPKnEmzps2bOHPq3Mmzp8+fQIMKHUq0qNGjSJMqXcq0qdOnUKNKnUq1qtWrWLNq3cq1q9evYMOKHUu2rNmzZgEBADs=",
     desc: "加载中...",
     category: "默认",
@@ -127,6 +126,7 @@ interface InputAreaProps {
   onPanelChange?: (isOpen: boolean) => void;
   onCompositionStart?: () => void;
   onCompositionEnd?: () => void;
+  onStartCall?: () => void;
 }
 
 export function InputArea({
@@ -136,13 +136,16 @@ export function InputArea({
   onSendText,
   onSendAudio,
   onPanelChange,
-  // 👇👇👇 在这里新增这两个，记得加逗号 👇👇👇
   onCompositionStart,
   onCompositionEnd,
+  onStartCall,
 }: InputAreaProps) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const startY = useRef(0);
-  const fileInputRef = useRef<HTMLInputElement>(null); // 🔥 新增：文件选择引用
+
+  // 🔥 Ref: 文件选择与相机
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const cameraInputRef = useRef<HTMLInputElement>(null);
 
   const [activePanel, setActivePanel] = useState<"none" | "emoji" | "plus">(
     "none"
@@ -241,27 +244,43 @@ export function InputArea({
     onSendAudio(sticker.url, 0, null, sticker.desc);
   };
 
-  // 🔥 核心逻辑：读取本地文件并转 Base64
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // 🔥 核心逻辑：统一处理文件选择（相册、相机、表情包上传）
+  const handleFileSelect = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    isCamera = false
+  ) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // 限制大小 (例如 1MB)
-    if (file.size > 1024 * 1024) {
-      alert("图片太大啦，请上传小于 1MB 的图片");
+    if (file.size > 10 * 1024 * 1024) {
+      alert("图片太大啦，请上传小于 10MB 的图片");
       return;
     }
 
     const reader = new FileReader();
     reader.onload = (event) => {
       if (event.target?.result) {
-        setNewStickerUrl(event.target.result as string);
-        // 自动提取文件名作为描述
-        const name = file.name.split(".")[0];
-        if (!newStickerDesc) setNewStickerDesc(name);
+        const base64 = event.target.result as string;
+
+        // 场景1：正在表情包上传弹窗中
+        if (showUploadModal) {
+          setNewStickerUrl(base64);
+          const name = file.name.split(".")[0];
+          if (!newStickerDesc) setNewStickerDesc(name);
+        }
+        // 场景2：直接发送图片（来自相册或相机）
+        else {
+          const desc = isCamera ? "[拍摄照片]" : "[相册图片]";
+          // 这里借用 onSendAudio 接口发送图片，imageDesc 非空时会被视作图片/sticker消息
+          onSendAudio(base64, 0, null, desc);
+          setActivePanel("none");
+        }
       }
     };
     reader.readAsDataURL(file);
+
+    // 清空，允许重复选同一张
+    e.target.value = "";
   };
 
   const confirmUpload = () => {
@@ -366,8 +385,73 @@ export function InputArea({
     setRecordState("idle");
   };
 
+  // 🔥 功能菜单配置
+  const FUNCTION_MENU = [
+    {
+      name: "相册",
+      icon: "https://i.postimg.cc/G9PRrStM/xiang-ce.png", // 相册
+      action: () => fileInputRef.current?.click(),
+    },
+    {
+      name: "拍摄",
+      icon: "https://i.postimg.cc/LhkSR05D/3-1pai-she.png", // 黑色相机
+      action: () => cameraInputRef.current?.click(),
+    },
+    {
+      name: "语音通话",
+      icon: "https://i.postimg.cc/grypdBjS/yu-yin-tong-hua-copy.png", // 橙色电话
+      action: () => {
+        if (onStartCall) onStartCall();
+        setActivePanel("none"); // 点击后关闭底部面板
+      },
+    },
+    {
+      name: "红包",
+      icon: "https://postimg.cc/sBz8n393", // 红色红包
+      action: () => alert("红包功能开发中..."),
+    },
+    {
+      name: "位置",
+      icon: "https://cdn-icons-png.flaticon.com/512/535/535239.png", // 位置
+      action: () => alert("位置功能开发中..."),
+    },
+    {
+      name: "收藏",
+      icon: "https://cdn-icons-png.flaticon.com/512/1077/1077035.png", // 收藏
+      action: () => alert("我的收藏"),
+    },
+    {
+      name: "文件",
+      icon: "https://cdn-icons-png.flaticon.com/512/3767/3767084.png", // 文件
+      action: () => fileInputRef.current?.click(), // 暂复用相册
+    },
+    {
+      name: "名片",
+      icon: "https://cdn-icons-png.flaticon.com/512/1063/1063376.png", // 名片
+      action: () => alert("选择名片"),
+    },
+  ];
+
   return (
     <>
+      {/* 隐形 Input：用于相册选择 */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        className="hidden"
+        accept="image/*"
+        onChange={(e) => handleFileSelect(e, false)}
+      />
+      {/* 隐形 Input：用于调用相机 */}
+      <input
+        type="file"
+        ref={cameraInputRef}
+        className="hidden"
+        accept="image/*"
+        capture="environment"
+        onChange={(e) => handleFileSelect(e, true)}
+      />
+
       {recordState !== "idle" && (
         <div className="fixed inset-0 z-50 flex items-center justify-center pointer-events-none select-none">
           <div
@@ -452,7 +536,7 @@ export function InputArea({
                         placeholder="输入图片链接..."
                         className="flex-1 bg-gray-100 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-[#07c160]/20 focus:border-[#07c160] transition-all"
                       />
-                      {/* 🔥🔥🔥 本地上传按钮 🔥🔥🔥 */}
+                      {/* 复用全局的 fileInputRef */}
                       <button
                         onClick={() => fileInputRef.current?.click()}
                         className="bg-gray-100 hover:bg-gray-200 text-gray-600 px-3 rounded-lg border border-gray-200"
@@ -460,13 +544,6 @@ export function InputArea({
                       >
                         <UploadCloud className="w-5 h-5" />
                       </button>
-                      <input
-                        type="file"
-                        ref={fileInputRef}
-                        className="hidden"
-                        accept="image/*"
-                        onChange={handleFileSelect}
-                      />
                     </div>
                   </div>
                   <div>
@@ -604,7 +681,6 @@ export function InputArea({
             <textarea
               ref={textareaRef}
               value={input}
-              // 👇👇👇 新增下面这两行 👇👇👇
               onCompositionStart={onCompositionStart}
               onCompositionEnd={onCompositionEnd}
               onChange={(e) => onInputChange(e.target.value)}
@@ -659,10 +735,12 @@ export function InputArea({
                 onClick={() =>
                   setActivePanel(activePanel === "plus" ? "none" : "plus")
                 }
-                className="w-8 flex items-center justify-center text-[#181818]"
+                className={`w-8 flex items-center justify-center transition-colors ${
+                  activePanel === "plus" ? "text-[#181818]" : "text-[#181818]"
+                }`}
               >
                 <div
-                  className="w-7 h-7 rounded-full border border-[#181818] border-opacity-70 flex items-center justify-center transition-transform"
+                  className="w-7 h-7 rounded-full border border-[#181818] border-opacity-70 flex items-center justify-center transition-transform duration-200"
                   style={{
                     transform:
                       activePanel === "plus" ? "rotate(45deg)" : "rotate(0)",
@@ -877,12 +955,27 @@ export function InputArea({
             </div>
           )}
           {activePanel === "plus" && (
-            <div className="h-full grid grid-cols-4 gap-6 p-6">
-              <div className="flex flex-col items-center gap-2 group cursor-pointer active:opacity-60">
-                <div className="w-14 h-14 bg-white rounded-2xl flex items-center justify-center border border-gray-200 text-3xl">
-                  🖼️
-                </div>
-                <span className="text-xs text-gray-500">相册</span>
+            <div className="h-full px-8 py-6">
+              <div className="grid grid-cols-4 gap-y-6 gap-x-8">
+                {FUNCTION_MENU.map((item, index) => (
+                  <div
+                    key={index}
+                    onClick={item.action}
+                    className="flex flex-col items-center gap-2 group cursor-pointer active:opacity-60 transition-opacity"
+                  >
+                    <div className="w-[60px] h-[60px] bg-white rounded-2xl flex items-center justify-center border border-gray-200/60 shadow-[0_2px_8px_rgba(0,0,0,0.04)] hover:bg-gray-50 transition-colors">
+                      <img
+                        src={item.icon}
+                        alt={item.name}
+                        className="w-8 h-8 object-contain"
+                        draggable={false}
+                      />
+                    </div>
+                    <span className="text-[12px] text-gray-500 font-medium">
+                      {item.name}
+                    </span>
+                  </div>
+                ))}
               </div>
             </div>
           )}

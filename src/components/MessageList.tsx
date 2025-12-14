@@ -21,7 +21,12 @@ import {
   CalendarClock,
   Circle,
   ListTodo,
-  PlusCircle, // ✨ 确保只在这里出现一次
+  PlusCircle,
+  // 👇 新增通话相关图标
+  Phone,
+  PhoneOff,
+  PhoneIncoming,
+  PhoneMissed,
 } from "lucide-react";
 import Link from "next/link";
 
@@ -288,7 +293,8 @@ export interface Message {
     | "system_notice"
     | "focus_invite"
     | "focus_share"
-    | "study_card";
+    | "study_card"
+    | "call_log"; // 🔥 新增 call_log 类型
   duration?: number;
   audioUrl?: string;
   status?: "sending" | "sent" | "error";
@@ -469,6 +475,53 @@ export default function MessageList({
     }
   };
 
+  // 🔥 渲染通话记录气泡
+  const renderCallLog = (msg: Message) => {
+    const isUser = msg.role === "user";
+    const isMissed =
+      msg.content.includes("拒绝") || msg.content.includes("取消");
+
+    return (
+      <div
+        className={`flex items-center gap-2 px-4 py-3 rounded-lg shadow-sm select-none ${
+          isUser
+            ? "bg-[#95EC69] text-black" // 微信绿
+            : "bg-white text-black border border-gray-100" // 微信白
+        }`}
+      >
+        {/* AI(左侧) 显示的图标 */}
+        {!isUser && (
+          <div
+            className={`mr-1 ${isMissed ? "text-orange-500" : "text-black"}`}
+          >
+            {isMissed ? (
+              <PhoneMissed className="w-5 h-5" />
+            ) : (
+              <PhoneIncoming className="w-5 h-5 fill-current" />
+            )}
+          </div>
+        )}
+
+        <span className="text-[15px] font-medium min-w-[80px] text-center">
+          {msg.content}
+        </span>
+
+        {/* User(右侧) 显示的图标 */}
+        {isUser && (
+          <div
+            className={`ml-1 ${isMissed ? "text-orange-500" : "text-black"}`}
+          >
+            {isMissed ? (
+              <PhoneOff className="w-5 h-5" />
+            ) : (
+              <Phone className="w-5 h-5 fill-current" />
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
+
   const MenuItem = ({ icon: Icon, label, onClick }: any) => (
     <button
       onClick={(e) => {
@@ -513,6 +566,7 @@ export default function MessageList({
         const isFocusMode =
           msg.type === "focus_invite" || msg.type === "focus_share";
         const isStudyCardMode = msg.type === "study_card";
+        const isCallLogMode = msg.type === "call_log"; // 🔥 检查是否是 call_log
 
         const hasParentheses =
           msg.content &&
@@ -526,7 +580,8 @@ export default function MessageList({
           !isStickerMode &&
           !isInviteMode &&
           !isFocusMode &&
-          !isStudyCardMode;
+          !isStudyCardMode &&
+          !isCallLogMode;
 
         const messageParts = shouldParseNarrative
           ? splitNarrativeContent(msg.content)
@@ -568,7 +623,8 @@ export default function MessageList({
                 msg.type === "image" ||
                 isInviteMode ||
                 isFocusMode ||
-                isStudyCardMode
+                isStudyCardMode ||
+                isCallLogMode // 🔥 call_log 移除默认背景
               ) {
                 bubbleClass = "bg-transparent shadow-none p-0 border-none";
               }
@@ -628,6 +684,9 @@ export default function MessageList({
                       }}
                       className={`relative px-3 py-2 text-[15px] leading-relaxed break-words shadow-sm select-text cursor-pointer ${bubbleClass}`}
                     >
+                      {/* 🔥 渲染通话记录 */}
+                      {isCallLogMode && renderCallLog(msg)}
+
                       {isStudyCardMode && (
                         <StudyPlanCard content={msg.content} />
                       )}
@@ -743,6 +802,7 @@ export default function MessageList({
                         !isInviteMode &&
                         !isFocusMode &&
                         !isStudyCardMode &&
+                        !isCallLogMode && // 🔥 call_log 也不显示文本
                         msg.type !== "image" &&
                         msg.type !== "audio" && (
                           <RenderContentWithImages content={part.text || ""} />
@@ -891,6 +951,7 @@ export default function MessageList({
                   selectedMsg.type !== "focus_share" &&
                   selectedMsg.type !== "study_card" &&
                   selectedMsg.type !== "system_notice" &&
+                  selectedMsg.type !== "call_log" && // 🔥 call_log 禁用复制
                   !extractMarkdownImage(selectedMsg.content) && (
                     <MenuItem
                       icon={isCopied ? Check : Copy}
