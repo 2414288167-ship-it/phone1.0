@@ -2,17 +2,41 @@
 @tailwind components;
 @tailwind utilities;
 
-* {
-  @apply box-border;
-}
+/* 👇👇👇 核心修复区域开始 👇👇👇 */
 
+/* 1. 基础全局设置 */
 html,
 body {
-  @apply bg-darker text-white antialiased;
+  width: 100%;
+  height: 100%; /* 强制占满高度 */
+
+  /* 🚫 禁止整个网页滚动，只允许内部区域滚动 */
+  overflow: hidden;
+
+  /* 🚫 禁止 iOS 的“橡皮筋”回弹效果 */
+  overscroll-behavior: none;
+
+  /* 🎨 背景色设为浅灰，防止回弹时漏出黑色背景 */
+  background-color: #f3f4f6;
+
+  /* 字体颜色设为深色 (原先是 text-white 会导致白底白字) */
+  @apply text-slate-900 antialiased;
 }
 
+/* 2. 元素行为设置 */
+* {
+  @apply box-border;
+  /* (可选) 像原生 App 一样禁止长按图片/链接弹出菜单 */
+  -webkit-touch-callout: none;
+}
+
+/* 👆👆👆 核心修复区域结束 👆👆👆 */
+
+/* 下面是你原有的样式，保持不变 */
+
 a {
-  @apply text-accent hover:opacity-80 transition-opacity;
+  /* 如果 text-accent 是你的自定义颜色，请确保它在 light 模式下可见 */
+  @apply hover:opacity-80 transition-opacity;
 }
 
 button:disabled {

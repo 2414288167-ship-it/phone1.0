@@ -10,6 +10,11 @@ const nextConfig = {
     unoptimized: true,
   },
 
+  // 关键配置：将 NeteaseCloudMusicApi 排除在打包之外
+  experimental: {
+    serverComponentsExternalPackages: ["NeteaseCloudMusicApi"],
+  },
+
   // 3. 忽略检查配置 (来自 js 文件)
   // 这能防止因为一点小语法错误导致 Vercel 部署失败
   typescript: {

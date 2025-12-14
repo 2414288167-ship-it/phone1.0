@@ -3,9 +3,9 @@ import { kv } from "@vercel/kv";
 import webPush from "web-push";
 
 // 配置 Web Push
-// 我已经把你的密钥直接填进去了，这样就不会报“找不到 Key”的错误了
+// 我已经把你的密钥直接填进去了，这样就不会报"找不到 Key"的错误了
 webPush.setVapidDetails(
-  "2414288167@qq.com", // 这里用默认邮箱即可
+  "https://example.com", // VAPID subject 必须是有效的 URL 格式
   "BFj_E8sTEDUQqF4rfguCN2Wu_ph9nO55JX8ZSXCUneyhGTWyE7lh8A8iMy8UXPE141w_2qvFcVwUJ1Cxf1MFTRw", // 你的公钥
   "Lib_9wOkZIwGRp6upFIlPORPfD40aswJBAcP6F_ttBQ" // 你的私钥
 );
@@ -19,6 +19,15 @@ interface StoredUserData {
 
 export async function GET() {
   try {
+    // 检查环境变量是否存在
+    if (!process.env.KV_REST_API_URL || !process.env.KV_REST_API_TOKEN) {
+      console.log("⚠️ KV 环境变量未配置，跳过推送检查");
+      return NextResponse.json({
+        message: "KV not configured - skipping push check",
+        skipped: true,
+      });
+    }
+
     // 1. 从 Redis 拉取所有用户的订阅数据
     const allUsers = await kv.hgetall("active_push_users");
 

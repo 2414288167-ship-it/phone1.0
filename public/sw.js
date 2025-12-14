@@ -1,21 +1,33 @@
 // public/sw.js
-self.addEventListener("push", function (event) {
-  if (event.data) {
-    const data = event.data.json();
-    const options = {
-      body: data.body,
-      icon: "/icon.png", // 确保你的 public 文件夹里有 icon.png
-      badge: "/badge.png",
-      vibrate: [100, 50, 100],
-      data: {
-        url: data.url,
-      },
-    };
-    event.waitUntil(self.registration.showNotification(data.title, options));
-  }
+
+self.addEventListener("install", (event) => {
+  // Service Worker 安装后立即激活
+  self.skipWaiting();
 });
 
-self.addEventListener("notificationclick", function (event) {
+self.addEventListener("activate", (event) => {
+  // 接管所有页面
+  event.waitUntil(self.clients.claim());
+});
+
+// 监听通知点击事件（点击通知后打开聊天窗口）
+self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  event.waitUntil(clients.openWindow(event.notification.data.url));
+
+  event.waitUntil(
+    clients
+      .matchAll({ type: "window", includeUncontrolled: true })
+      .then((clientList) => {
+        // 如果已经有打开的窗口，就聚焦它
+        for (const client of clientList) {
+          if (client.url && "focus" in client) {
+            return client.focus();
+          }
+        }
+        // 如果没有打开，就打开首页
+        if (clients.openWindow) {
+          return clients.openWindow("/");
+        }
+      })
+  );
 });

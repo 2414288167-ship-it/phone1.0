@@ -6,7 +6,6 @@ import React, { useState, useEffect } from "react";
 import {
   Settings,
   CloudSun,
-  Calendar,
   Image as ImageIcon,
   Camera,
   BatteryCharging,
@@ -15,6 +14,8 @@ import {
   Users,
   ShoppingBag,
   Music,
+  Clock,
+  Repeat,
 } from "lucide-react";
 import { useMyTheme } from "../lib/MyTheme";
 
@@ -78,12 +79,97 @@ const ClockWidget = () => {
 };
 
 const ToDoWidget = () => {
-  const items = [
-    { text: "保持好心情 🩵", done: false },
-    { text: "每天喝八杯水 🥛", done: false },
-    { text: "坚持减肥运动 🥎", done: false },
-    { text: "去看海吹泡泡 🫧", done: false },
-  ];
+  interface Task {
+    id: string;
+    text: string;
+    done: boolean;
+    type: string;
+    completedAt?: number;
+    startTime?: string;
+    endTime?: string;
+    isDaily?: boolean;
+  }
+
+  const [items, setItems] = useState<Task[]>([]);
+
+  // 🔥 修复：增加 try-catch 防止坏数据导致崩溃
+  const loadTasks = () => {
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("my_focus_tasks");
+        if (saved) {
+          let parsedTasks: Task[] = JSON.parse(saved);
+
+          // 安全检查：确保解析出来的是数组
+          if (!Array.isArray(parsedTasks)) {
+            parsedTasks = [];
+          }
+
+          const todayStr = new Date().toDateString();
+          let hasUpdates = false;
+
+          parsedTasks = parsedTasks.map((t) => {
+            // 安全检查：防止 t 为 null
+            if (!t)
+              return {
+                id: Math.random().toString(),
+                text: "Err",
+                done: false,
+                type: "u-i",
+              };
+
+            if (t.isDaily && t.done && t.completedAt) {
+              const taskDate = new Date(t.completedAt).toDateString();
+              if (taskDate !== todayStr) {
+                hasUpdates = true;
+                return { ...t, done: false, completedAt: undefined };
+              }
+            }
+            return t;
+          });
+
+          setItems(parsedTasks);
+
+          if (hasUpdates) {
+            localStorage.setItem("my_focus_tasks", JSON.stringify(parsedTasks));
+          }
+        } else {
+          setItems([
+            { id: "1", text: "保持好心情 ✨", done: false, type: "u-ni" },
+          ]);
+        }
+      } catch (e) {
+        console.error("加载任务失败，重置数据", e);
+        setItems([]);
+        localStorage.removeItem("my_focus_tasks"); // 清除坏数据
+      }
+    }
+  };
+
+  const toggleDone = (id: string) => {
+    const newItems = items.map((item) =>
+      item.id === id
+        ? {
+            ...item,
+            done: !item.done,
+            completedAt: !item.done ? Date.now() : undefined,
+          }
+        : item
+    );
+    setItems(newItems);
+    localStorage.setItem("my_focus_tasks", JSON.stringify(newItems));
+    window.dispatchEvent(new Event("local-storage-update"));
+  };
+
+  useEffect(() => {
+    loadTasks();
+    window.addEventListener("storage", loadTasks);
+    window.addEventListener("local-storage-update", loadTasks);
+    return () => {
+      window.removeEventListener("storage", loadTasks);
+      window.removeEventListener("local-storage-update", loadTasks);
+    };
+  }, []);
 
   return (
     <GlassCard className="h-full p-4 flex flex-col relative overflow-hidden min-h-[220px]">
@@ -92,26 +178,80 @@ const ToDoWidget = () => {
         <br />
         Sky
       </div>
-      <h3 className="text-center text-gray-800 font-medium mb-3 border-b-2 border-dashed border-gray-400/30 pb-2 mx-4">
+      <Link
+        href="/focus"
+        className="text-center text-gray-800 font-medium mb-3 border-b-2 border-dashed border-gray-400/30 pb-2 mx-4 block hover:text-blue-600 transition"
+      >
         To Do List
-      </h3>
-      <div className="flex-1 flex flex-col gap-3 z-10">
-        {items.map((item, i) => (
-          <div
-            key={i}
-            className="flex items-center justify-between text-sm text-gray-700 font-medium"
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-white drop-shadow-sm">♥</span>
-              <span>{item.text}</span>
-            </div>
-            <div className="w-4 h-4 border-2 border-gray-600/50 rounded" />
+      </Link>
+
+      {/* 底部留出空间给 absolute 的统计条 */}
+      <div className="flex-1 flex flex-col gap-2 z-10 overflow-y-auto max-h-[140px] pr-1 no-scrollbar pb-14">
+        {items.length === 0 ? (
+          <div className="text-xs text-gray-500 text-center py-4">
+            暂无任务，点击标题添加
           </div>
-        ))}
+        ) : (
+          items.slice(0, 5).map((item, i) => (
+            <div
+              key={item?.id || i}
+              className="flex items-start justify-between text-sm text-gray-700 font-medium group cursor-pointer hover:bg-white/30 p-1 rounded-lg transition-colors"
+              onClick={() => item && toggleDone(item.id)}
+            >
+              <div
+                className={`flex flex-col gap-0.5 transition flex-1 min-w-0 ${
+                  item?.done ? "opacity-50" : ""
+                }`}
+              >
+                <div className="flex items-center gap-2">
+                  <span
+                    className={`text-[10px] shrink-0 ${
+                      item?.done
+                        ? "text-gray-400"
+                        : "text-blue-400 drop-shadow-sm"
+                    }`}
+                  >
+                    ●
+                  </span>
+                  <span
+                    className={`truncate ${item?.done ? "line-through" : ""}`}
+                  >
+                    {item?.text || "未命名"}
+                  </span>
+                  {item?.isDaily && (
+                    <Repeat className="w-3 h-3 text-gray-400 shrink-0" />
+                  )}
+                </div>
+
+                {(item?.startTime || item?.endTime) && !item?.done && (
+                  <div className="flex items-center gap-1 text-[10px] text-gray-500 ml-4 bg-white/40 w-fit px-1.5 rounded">
+                    <Clock className="w-3 h-3" />
+                    <span>
+                      {item.startTime || "..."}-{item.endTime || "..."}
+                    </span>
+                  </div>
+                )}
+              </div>
+
+              <div
+                className={`w-4 h-4 border-2 rounded flex items-center justify-center transition shrink-0 mt-0.5 ${
+                  item?.done
+                    ? "bg-blue-400 border-blue-400"
+                    : "border-gray-400/50"
+                }`}
+              >
+                {item?.done && (
+                  <span className="text-white text-xs font-bold">✓</span>
+                )}
+              </div>
+            </div>
+          ))
+        )}
       </div>
-      <div className="mt-2 relative h-12 w-full opacity-90">
-        <div className="absolute inset-0 bg-blue-200/40 rotate-2 transform rounded flex items-center justify-center text-blue-800 font-bold text-sm">
-          想去海边
+
+      <div className="absolute bottom-4 left-4 right-4 h-10 opacity-95 z-20">
+        <div className="w-full h-full bg-blue-200/50 rotate-1 transform rounded-xl flex items-center justify-center text-blue-800 font-bold text-sm backdrop-blur-md shadow-sm transition-transform hover:rotate-0 hover:scale-105 active:scale-95 cursor-pointer border border-white/40">
+          {items.filter((i) => i?.done).length}/{items.length} 完成
         </div>
       </div>
     </GlassCard>
@@ -149,6 +289,7 @@ const WeatherBatteryWidget = () => {
         <span className="text-xs font-bold text-gray-700">能量 78%</span>
       </div>
       <div className="h-8 w-full rounded-lg bg-blue-100/50 overflow-hidden relative mt-1">
+        {/* 🔥 修复：使用 https 网络图片，而不是 \icons\ 这种本地非法路径 */}
         <img
           src="https://images.unsplash.com/photo-1550684848-fac1c5b4e853?auto=format&fit=crop&w=200&q=80"
           className="w-full h-full object-cover opacity-80"
@@ -175,11 +316,24 @@ const AppIcon = ({ icon: Icon, color, name, href = "#" }: any) => (
 );
 
 export default function HomePage() {
-  const { totalUnread } = useUnread();
-  const { settings } = useMyTheme();
+  // 🔥 修复：安全获取 context，防止未提供 Provider 时崩溃
+  const themeContext = useMyTheme();
+  const unreadContext = useUnread();
+
+  // 安全解构：如果 context 为空，给默认值
+  const settings = themeContext?.settings || {
+    homeWallpaper: "",
+    nightMode: false,
+  };
+  const totalUnread = unreadContext?.totalUnread || 0;
+
   const [avatar, setAvatar] = useState<string>("");
 
+  // 🔥 修复：增加 mounted 状态，强制只在客户端渲染，解决水合错误
+  const [mounted, setMounted] = useState(false);
+
   useEffect(() => {
+    setMounted(true); // 挂载后显示内容
     if (typeof window !== "undefined") {
       try {
         const profileStr = localStorage.getItem("user_profile_v4");
@@ -190,6 +344,11 @@ export default function HomePage() {
       } catch (e) {}
     }
   }, []);
+
+  // 🚨 关键：如果是服务端渲染阶段，返回空，避免不匹配报错
+  if (!mounted) {
+    return <div className="min-h-screen bg-gray-100" />;
+  }
 
   return (
     <div
@@ -203,7 +362,6 @@ export default function HomePage() {
     >
       <div className="absolute inset-0 bg-blue-100/10 backdrop-blur-[2px]" />
 
-      {/* 🔥🔥🔥 修改1：底部 padding 加大到 28，防止内容被 Dock 遮挡 */}
       <div className="relative z-10 h-full flex flex-col px-6 pt-10 pb-28 max-w-md mx-auto min-h-screen">
         {/* 顶部区域 */}
         <div className="flex justify-between items-start mb-6">
@@ -238,21 +396,61 @@ export default function HomePage() {
               <ToDoWidget />
             </div>
             <div className="grid grid-cols-2 gap-4 justify-items-center mt-2">
-              <AppIcon
-                icon={Calendar}
-                name="日历"
-                color="bg-white text-blue-500"
-              />
-              <AppIcon
-                icon={CloudSun}
-                name="天气"
-                color="bg-gradient-to-b from-blue-300 to-blue-400"
-              />
-              <AppIcon
-                icon={ImageIcon}
-                name="相册"
-                color="bg-gradient-to-tr from-purple-300 to-blue-300"
-              />
+              {/* --- 预设 APP --- */}
+              <Link
+                href="/preset"
+                className="flex flex-col items-center gap-1 group"
+              >
+                <div className="w-[3.5rem] h-[3.5rem] rounded-2xl flex items-center justify-center shadow-md transition-transform group-active:scale-95 relative overflow-hidden p-1 bg-white">
+                  {/* 🔥 修复：路径改为正斜杠 / */}
+                  <img
+                    src="/icons/博学猫.png"
+                    className="w-full h-full object-contain"
+                    alt="预设"
+                    onError={(e) => (e.currentTarget.style.display = "none")}
+                  />
+                </div>
+                <span className="text-xs text-white font-medium drop-shadow-md">
+                  预设
+                </span>
+              </Link>
+
+              {/* --- 音乐 APP --- */}
+              <Link
+                href="/music"
+                className="flex flex-col items-center gap-1 group relative"
+              >
+                <div className="relative">
+                  <div className="w-14 h-14 rounded-2xl bg-white flex items-center justify-center shadow-md transition-transform group-active:scale-95 overflow-hidden">
+                    <img
+                      src="/icons/网易云音乐.png"
+                      className="w-full h-full object-cover scale-110"
+                      alt="音乐"
+                      onError={(e) => (e.currentTarget.style.display = "none")}
+                    />
+                  </div>
+                </div>
+                <span className="text-xs text-white font-medium drop-shadow-md">
+                  音乐
+                </span>
+              </Link>
+
+              <Link
+                href="/focus"
+                className="flex flex-col items-center gap-1 group"
+              >
+                <div className="w-[3.5rem] h-[3.5rem] rounded-2xl flex items-center justify-center shadow-md transition-transform group-active:scale-95 relative overflow-hidden p-1 bg-white">
+                  <img
+                    src="/icons/波斯猫.png"
+                    className="w-full h-full object-contain"
+                    alt="专注闹钟"
+                    onError={(e) => (e.currentTarget.style.display = "none")}
+                  />
+                </div>
+                <span className="text-xs text-white font-medium drop-shadow-md">
+                  专注闹钟
+                </span>
+              </Link>
               <AppIcon
                 icon={Camera}
                 name="相机"
@@ -271,6 +469,7 @@ export default function HomePage() {
               >
                 <div className="relative">
                   <div className="w-14 h-14 rounded-2xl bg-white flex items-center justify-center shadow-md transition-transform group-active:scale-95 overflow-hidden">
+                    {/* SVG 微信图标保持不变 */}
                     <svg
                       viewBox="0 0 1024 1024"
                       version="1.1"
@@ -303,11 +502,12 @@ export default function HomePage() {
                 href="/notes"
                 className="flex flex-col items-center gap-1 group"
               >
-                <div className="w-14 h-14 rounded-2xl bg-white/20 backdrop-blur-md flex items-center justify-center shadow-md transition-transform group-active:scale-95 border border-white/20">
+                <div className="w-[3.5rem] h-[3.5rem] rounded-2xl flex items-center justify-center shadow-md transition-transform group-active:scale-95 relative overflow-hidden p-1 bg-white">
                   <img
-                    src="https://i.postimg.cc/ZKMzdKzx/像素风_书籍_copy.png"
+                    src="/icons/橘猫.png"
+                    className="w-full h-full object-contain"
                     alt="世界书"
-                    className="w-10 h-10 object-contain"
+                    onError={(e) => (e.currentTarget.style.display = "none")}
                   />
                 </div>
                 <span className="text-xs text-white font-medium drop-shadow-md">
@@ -319,8 +519,6 @@ export default function HomePage() {
           </div>
         </div>
 
-        {/* 🔥🔥🔥 修改2：使用 absolute positioning 强制固定在底部 🔥🔥🔥 */}
-        {/* bottom-6 大约是 24px (接近0.5cm) */}
         <div className="absolute bottom-6 left-6 right-6 z-50">
           <GlassCard className="flex justify-around items-center py-3 px-2 rounded-[2rem] bg-white/30 border-white/40 shadow-xl">
             <AppIcon icon={Search} color="bg-blue-400" href="/discover" />
